@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EKG İzleme Paneli – İP2 & İP4</title>
+<style>
+/* Minimalist Koyu ve Pembe Vurgulu Tema */
+:root {
+  --bg: #120e15; 
+  --panel: #1e1724; 
+  --line: #32263d; 
+  --txt: #f3eef9; 
+  --mut: #a395b5; 
+  --acc: #ff6eb0; /* Cute Pink Accent */
+  --acc-hover: #ff8ec2;
+  --bad: #ff4d6d;
+  --c-ant: #4cc9f0;
+  --c-inf: #f6c453;
+  --c-lat: #7bd88f;
+  --c-neu: #9aa3b2;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--txt); font: 14px/1.4 system-ui, sans-serif; }
+
+header { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+h1 { font-size: 16px; margin: 0; }
+h1 span { color: var(--acc); font-weight: normal; }
+.badges { display: flex; gap: 8px; }
+.badge { padding: 4px 12px; border-radius: 99px; background: rgba(255, 110, 176, 0.1); border: 1px solid var(--acc); font-size: 12px; color: var(--acc); }
+
+/* 3 Sütunlu Izgara Yapısı */
+main { display: grid; grid-template-columns: 280px 1fr 300px; gap: 16px; padding: 16px 20px; height: calc(100vh - 54px); }
+@media(max-width: 1200px) { main { grid-template-columns: 280px 1fr; height: auto; } }
+@media(max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; }
+.card h2 { font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--acc); margin: 0 0 12px; }
+
+/* Derivasyon Kontrolleri */
+#leadGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lead { background: transparent; color: var(--c); border: 1px solid var(--c); border-radius: 8px; padding: 10px 0; font-weight: 600; cursor: pointer; transition: 0.2s; }
+.lead:hover { background: color-mix(in srgb, var(--c) 15%, transparent); }
+.lead.off { color: var(--bad); border-color: var(--bad); border-style: dashed; text-decoration: line-through; opacity: 0.7; background: rgba(255, 77, 109, 0.05); }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+button.act, select { background: #2a1f33; color: var(--txt); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; cursor: pointer; font: inherit; font-weight: 500; transition: 0.2s; }
+button.act:hover, select:hover { border-color: var(--acc); color: var(--acc); }
+select { width: 100%; }
+
+/* Canvas (Orta Alan) */
+.canvas-container { flex: 1; overflow: hidden; min-height: 500px; border-radius: 8px; background: #0a080c; border: 1px solid var(--line); }
+#cv { width: 100%; height: 100%; display: block; }
+
+/* Anatomik Kalp (Sağ Alan) */
+.heart-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+svg#heartModel { width: 100%; max-width: 250px; drop-shadow: 0 0 20px rgba(255, 0, 0, 0.15); overflow: visible; }
+
+/* Kalp Duvarı Stilleri (Kırmızı default renk) */
+.heart-wall { 
+  transition: all 0.3s ease; 
+  cursor: crosshair; 
+  stroke: var(--line); 
+  stroke-width: 2; 
+}
+#wall_lat { fill: #b31225; }
+#wall_ant { fill: #d91a32; }
+#wall_inf { fill: #8f0d1c; }
+
+/* Üzerine gelince pembe vurgu */
+.heart-wall:hover { 
+  filter: brightness(1.2); 
+  stroke: var(--acc); /* Cute pink */
+  stroke-width: 3; 
+}
+
+/* Hata durumunda kırmızı-beyaz yanıp sönme animasyonu */
+.heart-wall.error { 
+  animation: pulseError 1s infinite; 
+  stroke: #ffffff; 
+  stroke-width: 3; 
+}
+
+@keyframes pulseError {
+  0% { fill: #ff0000; filter: drop-shadow(0 0 10px #ff0000); }
+  50% { fill: #ffffff; filter: drop-shadow(0 0 15px #ffffff); }
+  100% { fill: #ff0000; filter: drop-shadow(0 0 10px #ff0000); }
+}
+
+/* Tooltip (Açıklama Kutucuğu) */
+#tooltip { position: absolute; background: rgba(20, 15, 25, 0.95); border: 1px solid var(--acc); padding: 12px; border-radius: 12px; font-size: 13px; color: var(--txt); width: 220px; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 10; box-shadow: 0 8px 24px rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+#tooltip h4 { margin: 0 0 6px 0; color: var(--acc); font-size: 14px; }
+#tooltip p { margin: 0; color: var(--mut); line-height: 1.4; }
+#tooltip.visible { opacity: 1; }
+
+.legend-list { margin-top: auto; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--mut); }
+.legend-list i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 8px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>EKG İzleme Paneli <span>· İP2 & İP4 XAI Modülü</span></h1>
+  <div class="badges">
+    <div class="badge" id="apiState">API: Bağlanıyor…</div>
+    <div class="badge" id="fps">FPS: –</div>
+  </div>
+</header>
+
+<main>
+  <!-- SOL SÜTUN: KONTROLLER -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <div class="card">
+      <h2>Derivasyon Kontrolü</h2>
+      <div id="leadGrid"></div>
+      <div class="row">
+        <button class="act" id="btnRand">Rastgele Kopar</button>
+        <button class="act" id="btnAll" style="flex:1">Tümünü Bağla</button>
+      </div>
+    </div>
+    <div class="card" style="flex: 1;">
+      <h2>Senaryo (Mock-API)</h2>
+      <select id="cond">
+        <option value="normal">Normal Sinüs Ritmi</option>
+        <option value="ant">Anterior MI (Ön Duvar)</option>
+        <option value="inf">Inferior MI (Alt Duvar)</option>
+      </select>
+      
+      <div class="legend-list" style="margin-top: 24px;">
+        <span style="--c:var(--c-ant)"><i style="background:var(--c)"></i>Ön Duvar (V1-V4)</span>
+        <span style="--c:var(--c-inf)"><i style="background:var(--c)"></i>Alt Duvar (II, III, aVF)</span>
+        <span style="--c:var(--c-lat)"><i style="background:var(--c)"></i>Yan Duvar (I, aVL, V5, V6)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ORTA SÜTUN: SİNYALLER -->
+  <section class="card" style="padding: 0; overflow: hidden; border-color: var(--line);">
+    <div class="canvas-container">
+      <canvas id="cv"></canvas>
+    </div>
+  </section>
+
+  <!-- SAĞ SÜTUN: ANATOMİK KALP & XAI -->
+  <section style="display: flex; flex-direction: column; gap: 16px;">
+    <div class="card" style="flex: 1; position: relative;" id="heartCard">
+      <h2>3D Anatomik Harita</h2>
+      <div class="heart-container">
+        <!-- Parçalanabilir Basit Vektörel Kalp Modeli -->
+        <svg viewBox="0 0 100 100" id="heartModel">
+          <!-- Yan Duvar (Lateral) -->
+          <path id="wall_lat" class="heart-wall" d="M 50 20 C 80 0, 100 30, 85 60 L 50 95 L 30 75 C 20 65, 30 40, 50 40 Z" />
+          <!-- Ön Duvar (Anterior / Septum) -->
+          <path id="wall_ant" class="heart-wall" d="M 50 20 C 35 5, 10 15, 10 35 C 10 50, 25 65, 50 95 L 60 85 C 45 65, 40 45, 50 20 Z" />
+          <!-- Alt Duvar (Inferior) -->
+          <path id="wall_inf" class="heart-wall" d="M 10 35 C 0 50, 15 75, 50 95 L 30 75 C 10 55, 10 40, 10 35 Z" />
+        </svg>
+      </div>
+      <div style="text-align: center; color: var(--mut); font-size: 12px; margin-top: 10px;">
+        * Kalp segmentlerinin üzerine gelerek detayları görebilirsiniz.
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Dinamik Tooltip -->
+<div id="tooltip">
+  <h4 id="ttTitle">Bölge Adı</h4>
+  <p id="ttDesc">Açıklama metni burada yer alacak.</p>
+</div>
+
+<script>
+/* ============ SABİTLER & VERİ YAPILARI ============ */
+const FS = 100; 
+const WIN = 1000; 
+const CAP = 4096; 
+const PREFETCH = 100;
+
+// Renk ve Bölge Eşleştirmeleri
+const COL = {ant:'var(--c-ant)', inf:'var(--c-inf)', lat:'var(--c-lat)', neu:'var(--c-neu)'};
+const REGION_INFO = {
+  ant: { title: "Anterior (Ön Duvar)", desc: "V1, V2, V3, V4 derivasyonlarını temsil eder. Kesinti durumunda ön yüzdeki iskemik bulguların tespiti zorlaşır.", leads: [6,7,8,9] },
+  inf: { title: "Inferior (Alt Duvar)", desc: "II, III, aVF derivasyonlarını temsil eder. Bu bölgedeki elektrot kopmaları alt taban hasarının (Inferior MI) atlanmasına neden olabilir.", leads: [1,2,5] },
+  lat: { title: "Lateral (Yan Duvar)", desc: "I, aVL, V5, V6 derivasyonlarını temsil eder. Model, sağlam kanallardaki Spatial Attention ile bu bölgeyi rekonstrükte eder.", leads: [0,4,10,11] }
+};
+
+const LEADS = [
+  {n:'I', w:'lat', a:[.12,-.08,.7,-.1,.25]}, {n:'II', w:'inf', a:[.15,-.1,1,-.15,.3]},
+  {n:'III',w:'inf', a:[.08,-.05,.4,-.1,.12]}, {n:'aVR',w:'neu', a:[-.12,.05,-.6,.05,-.22]},
+  {n:'aVL',w:'lat', a:[.05,-.05,.3,-.1,.1]}, {n:'aVF',w:'inf', a:[.12,-.08,.7,-.12,.22]},
+  {n:'V1', w:'ant', a:[.05,0,.2,-.7,.1]}, {n:'V2', w:'ant', a:[.06,0,.4,-1,.3]},
+  {n:'V3', w:'ant', a:[.08,-.05,.6,-.6,.35]}, {n:'V4', w:'ant', a:[.1,-.08,1,-.3,.4]},
+  {n:'V5', w:'lat', a:[.1,-.1,1.1,-.15,.35]}, {n:'V6', w:'lat', a:[.1,-.1,.9,-.1,.3]}
+];
+
+const mask = Array(12).fill(true);
+const store = new Float32Array(12*CAP);
+let pos = 1000, have = 0, pending = false;
+
+/* ============ MOCK-API ============ */
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const rnd = x => { const s = Math.sin(x*12.9898)*43758.5453; return s - Math.floor(s); };
+
+const api = {
+  cond: 'normal',
+  RR: 60/72,
+  sample(n, li) {
+    const L = LEADS[li], t = n/FS, k = Math.floor(t/this.RR);
+    let v = 0;
+    for (let j = k; j <= k+1; j++) {
+      const dt = t - j*this.RR;
+      v += L.a[2]*Math.exp(-((dt-.02)**2)/(2*.01**2)); 
+      if(this.cond === 'ant' && L.w === 'ant') v += 0.3*Math.exp(-((dt-.14)**2)/(2*.05**2));
+      if(this.cond === 'inf' && L.w === 'inf') v += 0.3*Math.exp(-((dt-.14)**2)/(2*.05**2));
+    }
+    return v + .05*Math.sin(2*Math.PI*.25*t + li) + .04*(rnd(n*13+li)-.5);
+  },
+  async chunk(start, n) {
+    await wait(10);
+    const data = LEADS.map((_, li) => Array.from({length:n}, (_, i) => this.sample(start+i, li)));
+    return { data };
+  }
+};
+
+/* ============ KONTROLLER VE ETKİLEŞİM ============ */
+const $ = id => document.getElementById(id);
+
+const btns = LEADS.map((L, i) => {
+  const b = document.createElement('button');
+  b.className = 'lead'; b.textContent = L.n; b.style.setProperty('--c', COL[L.w]);
+  b.onclick = () => toggle(i);
+  $('leadGrid').appendChild(b);
+  return b;
+});
+
+function toggle(i) {
+  const off = mask.filter(m => !m).length;
+  if (mask[i] && off >= 4) return alert('Maksimum 4 kanal koparılabilir.');
+  mask[i] = !mask[i];
+  refreshUI();
+}
+
+function refreshUI() {
+  btns.forEach((b, i) => b.classList.toggle('off', !mask[i]));
+  
+  // Kalp anatomisi güncellemeleri
+  ['ant', 'inf', 'lat'].forEach(wall => {
+    const wallInfo = REGION_INFO[wall];
+    const isBroken = wallInfo.leads.some(leadIndex => !mask[leadIndex]);
+    const path = $('wall_' + wall);
+    if(path) {
+        if(isBroken) path.classList.add('error');
+        else path.classList.remove('error');
+    }
+  });
+}
+
+$('btnAll').onclick = () => { mask.fill(true); refreshUI(); };$('btnRand').onclick = () => {
+  mask.fill(true);
+  const k = 1 + Math.floor(Math.random()*4);
+  const ids = [...Array(12).keys()].sort(() => Math.random() - .5).slice(0, k);
+  ids.forEach(i => mask[i] = false);
+  refreshUI();
+};
+$('cond').onchange = e => { api.cond = e.target.value; };
+
+/* ============ ANATOMİK KALP TOOLTIP LOGIC ============ */
+const tooltip = $('tooltip');
+const ttTitle = $('ttTitle');
+const ttDesc = $('ttDesc');
+const heartCard = $('heartCard');
+
+document.querySelectorAll('.heart-wall').forEach(path => {
+  path.addEventListener('mousemove', (e) => {
+    const wallKey = path.id.replace('wall_', '');
+    const info = REGION_INFO[wallKey];
+    
+    ttTitle.textContent = info.title;
+    ttDesc.textContent = info.desc;
+    
+    const broken = info.leads.filter(i => !mask[i]).map(i => LEADS[i].n);
+    if(broken.length > 0) {
+        ttDesc.innerHTML = info.desc + `<br><br><span style="color:var(--bad)">⚠️ Kopuk Kanallar: ${broken.join(', ')}</span>`;
+    }
+
+    tooltip.classList.add('visible');
+    
+    const rect = heartCard.getBoundingClientRect();
+    let x = e.clientX - rect.left + 15;
+    let y = e.clientY - rect.top + 15;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  });
+  
+  path.addEventListener('mouseleave', () => {
+    tooltip.classList.remove('visible');
+  });
+});
+
+/* ============ ÇİZİM DÖNGÜSÜ ============ */
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W, H, last = performance.now(), frames = 0, fpsT = last;
+
+function resize() {
+  const d = devicePixelRatio || 1; 
+  W = cv.parentElement.clientWidth; 
+  H = cv.parentElement.clientHeight;
+  cv.width = W * d; cv.height = H * d; 
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+new ResizeObserver(resize).observe(cv.parentElement);
+
+function pump(p) {
+  const need = Math.floor(p) + PREFETCH;
+  if (pending || have >= need) return;
+  pending = true;
+  api.chunk(have, need - have).then(r => {
+    for (let l = 0; l < 12; l++) 
+      for (let i = 0; i < r.data[0].length; i++) 
+        store[l*CAP + (have+i)%CAP] = r.data[l][i];
+    have += r.data[0].length;
+  }).finally(() => pending = false);
+}
+
+function draw(now) {
+  pos += (now - last)/1000*FS; last = now;
+  pump(pos);
+  ctx.clearRect(0, 0, W, H);
+  
+  const pps = W/WIN, rowH = H/12, sc = rowH*.35, newest = Math.min(Math.floor(pos), have - 1);
+  
+  ctx.lineWidth = 1; ctx.strokeStyle = '#231b2e'; ctx.beginPath();
+  for (let r = 1; r < 12; r++) { ctx.moveTo(0, r*rowH); ctx.lineTo(W, r*rowH); }
+  ctx.stroke();
+
+  ctx.font = '12px system-ui'; ctx.textBaseline = 'middle';
+  
+  for (let l = 0; l < 12; l++) {
+    const y0 = rowH*(l + .5);
+    const cStr = getComputedStyle(document.body).getPropertyValue(COL[LEADS[l].w].replace('var(','').replace(')','')).trim() || '#fff';
+    
+    ctx.fillStyle = mask[l] ? cStr : '#ff4d6d'; 
+    ctx.fillText(LEADS[l].n, 10, y0 - rowH*.25);
+
+    if (!mask[l]) {
+      ctx.strokeStyle = '#ff4d6d'; ctx.setLineDash([4, 4]); ctx.beginPath();
+      ctx.moveTo(0, y0); ctx.lineTo(W, y0); ctx.stroke(); ctx.setLineDash([]);
+      continue;
+    }
+
+    ctx.strokeStyle = cStr; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let n = Math.max(0, Math.floor(pos) - WIN), first = true; n <= newest; n++) {
+      const x = W - (pos - n)*pps, y = y0 - store[l*CAP + n % CAP]*sc;
+      first ? (ctx.moveTo(x, y), first = false) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  frames++;
+  if (now - fpsT >= 500) { 
+    $('fps').textContent = 'FPS: ' + Math.round(frames*1000/(now - fpsT)); 
+    frames = 0; fpsT = now; 
+  }
+  requestAnimationFrame(draw);
+}
+
+resize(); 
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
