@@ -2,33 +2,52 @@ import os
 import pandas as pd
 import numpy as np
 import wfdb
+import matplotlib.pyplot as plt
 import urllib.request
-import zipfile
 
-def download_ptbxl_demo(data_dir='data/raw'):
+def download_sample_signal(data_dir='data/raw'):
     """
-    Eger ptbxl_database.csv yoksa PhysioNet uzerinden indirir.
+    Örnek bir PTB-XL EKG sinyal dosyasını (hea ve dat) indirir.
     """
     os.makedirs(data_dir, exist_ok=True)
-    csv_path = os.path.join(data_dir, 'ptbxl_database.csv')
+    base_url = "https://physionet.org/files/ptb-xl/1.0.3/records100/00000/00001_lr"
     
-    if not os.path.exists(csv_path):
-        print("PTB-XL Veri seti bulunamadi. PhysioNet'ten indiriliyor (bu işlem birkaç saniye sürebilir)...")
-        url = "https://physionet.org/files/ptb-xl/1.0.3/ptbxl_database.csv"
-        try:
-            urllib.request.urlretrieve(url, csv_path)
-            print("ptbxl_database.csv basariyla indirildi!")
-        except Exception as e:
-            print(f"Indirme hatasi: {e}")
-            return None
+    hea_path = os.path.join(data_dir, "00001_lr.hea")
+    dat_path = os.path.join(data_dir, "00001_lr.dat")
+    
+    if not os.path.exists(hea_path):
+        print("Örnek sinyal dosyaları indiriliyor...")
+        urllib.request.urlretrieve(base_url + ".hea", hea_path)
+        urllib.request.urlretrieve(base_url + ".dat", dat_path)
+        print("Sinyal dosyaları başarıyla indirildi!")
 
-    df = pd.read_csv(csv_path, index_col='ecg_id')
-    print(f"\n--- Veri Seti OzetBilgisi ---")
-    print(f"Toplam EKG Kaydi Sayisi: {len(df)}")
-    return df
+def plot_sample_ecg(data_dir='data/raw'):
+    """
+    İndirilen EKG sinyalini okur ve 12 kanaldan bir tanesini ekrana çizer.
+    """
+    record_path = os.path.join(data_dir, "00001_lr")
+    record = wfdb.rdrecord(record_path)
+    
+    signals = record.p_signal
+    channels = record.sig_name
+    fs = record.fs
+    
+    print(f"Sinyal Boyutu: {signals.shape} (Örnek Sayısı x Kanal Sayısı)")
+    print(f"Örnekleme Frekansı: {fs} Hz")
+    print(f"Kanal İsimleri: {channels}")
+    
+    # Ilk kanalı (Lead I) çizdirelim
+    plt.figure(figsize=(12, 4))
+    plt.plot(signals[:1000, 0], color='crimson', linewidth=1.5)
+    plt.title(f"PTB-XL Örnek EKG Sinyali ({channels[0]} Kanalı)")
+    plt.xlabel("Örnek (Sample)")
+    plt.ylabel("Genlik (mV)")
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(os.path.join(data_dir, "sample_ecg.png"))
+    print("EKG grafiği 'data/raw/sample_ecg.png' olarak kaydedildi!")
+    plt.show()
 
 if __name__ == '__main__':
-    df = download_ptbxl_demo()
-    if df is not None:
-        print("\nIlk 5 Satir:")
-        print(df[['patient_id', 'age', 'sex', 'height', 'weight']].head())
+    download_sample_signal()
+    plot_sample_ecg()
