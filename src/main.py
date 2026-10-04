@@ -9,29 +9,30 @@ from model import ECGMaskedAutoencoder
 from preprocess import butter_bandpass_filter
 
 app = FastAPI(
-    title="Robust ECG Masked Autoencoder API",
-    description="Esnek uzunlukta EKG sinyal temizleme ve reconstruction servisi",
-    version="1.1.0"
+    title="Robust ECG Masked Autoencoder API (PTB-XL Multi-Lead Supported)",
+    description="Esnek uzunlukta ve multi-lead EKG sinyal işleme servisi",
+    version="2.0.0"
 )
 
-# Model yükleme
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model_path = "models/mae_ecg_checkpoint.pth"
 
+# 12-lead destekli model yükleme
 model = None
 if os.path.exists(model_path):
-    model = ECGMaskedAutoencoder().to(device)
+    model = ECGMaskedAutoencoder(in_channels=12).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
 class ECGRequest(BaseModel):
-    signal: list[float]  # Artık her uzunlukta liste kabul ediliyor!
+    # signal: List[float] (tek kanallı) veya List[List[float]] (çok kanallı / 12-lead)
+    signal: list
 
 @app.get("/")
 def read_root():
     return {
         "status": "online",
-        "message": "Robust ECG MAE Esnek Backend Servisi Çalışıyor",
+        "message": "Robust ECG MAE (12-Lead PTB-XL Destekli) Servis Çalışıyor",
         "model_loaded": model is not None
     }
 
@@ -40,38 +41,42 @@ def predict_ecg(data: ECGRequest):
     if model is None:
         raise HTTPException(status_code=500, detail="Model ağırlıkları bulunamadı!")
         
-    original_length = len(data.signal)
-    if original_length < 10:
-        raise HTTPException(status_code=400, detail="Sinyal çok kısa. En az 10 örnek gönderilmelidir.")
-        
     raw_signal = np.array(data.signal, dtype=np.float32)
     
-    # 1. Otomatik Boyutlandırma (Esneklik): Her boyutu 1000 örneğe getir
+    # 1. Boyut Şekillendirme (Single lead -> Multi lead dönüşümü)
+    if raw_signal.ndim == 1:
+        # Tek kanal geldiyse 12 kanala kopyala (fallback)
+        raw_signal = np.tile(raw_signal, (12, 1))
+    elif raw_signal.ndim == 2 and raw_signal.shape[0] != 12:
+        # Kanal sayısı 12 değilse ilk kanalı 12 türeve çoğalt
+        raw_signal = np.tile(raw_signal[0], (12, 1))
+        
+    num_leads, original_length = raw_signal.shape
+    
+    if original_length < 10:
+        raise HTTPException(status_code=400, detail="Sinyal çok kısa. En az 10 örnek gönderilmelidir.")
+
+    # 2. Resampling (1000 uzunluğuna getir)
     if original_length != 1000:
-        resampled_signal = resample(raw_signal, 1000)
+        resampled_signal = resample(raw_signal, 1000, axis=1)
     else:
         resampled_signal = raw_signal
 
-    # 2. Butterworth Bandpass Filtreleme
-    filtered_signal = butter_bandpass_filter(resampled_signal, fs=100)
+    # 3. Butterworth Filtreleme (Her kanal için)
+    filtered_signal = np.array([butter_bandpass_filter(resampled_signal[i], fs=100) for i in range(12)])
     
-    # 3. PyTorch Tensor Dönüşümü (.copy() ile stride hatası önlendi)
+    # 4. PyTorch Tensor Dönüşümü
     input_tensor = torch.tensor(filtered_signal.copy(), dtype=torch.float32).unsqueeze(0).to(device)
     
-    # 4. Model Tahmini (Inference)
+    # 5. Model Inference
     with torch.no_grad():
         decoded, mask = model(input_tensor)
         
-    # 5. İsteğe bağlı: Çıktıyı tekrar orijinal uzunluğuna geri ölçekle
-    output_signal = decoded.cpu().numpy().squeeze().flatten()
-    if original_length != 1000:
-        output_signal = resample(output_signal, original_length)
-
+    output_signal = decoded.cpu().numpy().squeeze()
+    
     return {
-        "original_length": original_length,
-        "processed_length": 1000,
-        "filtered_signal": filtered_signal.tolist(),
-        "reconstructed_signal": output_signal.tolist(),
-        "mask_pattern": mask.cpu().numpy().tolist(),
-        "status": "success"
+        "original_shape": [num_leads, original_length],
+        "processed_shape": [12, 1000],
+        "status": "success",
+        "message": "12-Lead EKG sinyali başarıyla rekonstrükte edildi."
     }

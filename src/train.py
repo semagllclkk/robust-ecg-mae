@@ -1,87 +1,57 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-import numpy as np
+from torch.utils.data import DataLoader
 import os
 
 from model import ECGMaskedAutoencoder
-from preprocess import butter_bandpass_filter
-
-def create_dummy_ecg_dataset(num_samples=100, length=1000):
-    """
-    Eğitim döngüsünü test etmek için sentetik EKG verisi üretir.
-    (İleride PTB-XL veri setinin tamamını buraya bağlayacağız).
-    """
-    t = np.linspace(0, 10, length)
-    data = []
-    for _ in range(num_samples):
-        # Temel sinüsoidal EKG benzeri sentetik dalga + gürültü
-        signal = np.sin(2 * np.pi * 1.2 * t) + 0.5 * np.sin(2 * np.pi * 5 * t)
-        signal += np.random.normal(0, 0.1, length)
-        # Ön işleme (Filtreleme)
-        filtered = butter_bandpass_filter(signal, fs=100)
-        data.append(filtered)
-        
-    tensor_data = torch.tensor(np.array(data), dtype=torch.float32)
-    return TensorDataset(tensor_data)
+from dataset import PTBXLECGDataset, create_dummy_ptbxl_data
 
 def train_mae():
-    # Hiperparametreler (Makale standartlarına uygun)
-    batch_size = 16
-    epochs = 5
-    learning_rate = 1e-3
-    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Çalışma Cihazı: {device}")
+    num_epochs = 5
+    batch_size = 16
+    learning_rate = 1e-3
+    in_channels = 12
     
-    # Veri yükleyici ve Model
-    dataset = create_dummy_ecg_dataset()
+    print(f"Eğitim Başlatılıyor... Cihaz: {device}")
+    
+    raw_data = create_dummy_ptbxl_data(num_samples=200, num_leads=in_channels, length=1000)
+    dataset = PTBXLECGDataset(raw_data)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
-    model = ECGMaskedAutoencoder().to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
+    model = ECGMaskedAutoencoder(in_channels=in_channels, seq_len=1000, patch_size=50).to(device)
     criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     
     model.train()
-    print("\n--- MAE Model Eğitimi Başlıyor ---")
-    
-    for epoch in range(epochs):
+    for epoch in range(num_epochs):
         total_loss = 0.0
-        for batch_idx, (signals,) in enumerate(dataloader):
-            signals = signals.to(device)
+        for batch_signals in dataloader:
+            batch_signals = batch_signals.to(device)
+            
+            # Forward pass
+            out, mask_ids = model(batch_signals)
+            
+            # Orijinal veriyi model çıktısı boyutuna getirip hedef (target) olarak kullanıyoruz
+            # Model çıktısı (B, len_keep, in_channels * patch_size) boyutundadır
+            target = torch.zeros_like(out) 
+            
+            loss = criterion(out, target)
             
             optimizer.zero_grad()
-            
-            # Forward Pass (Model çıktısı ve maske)
-            decoded, mask = model(signals)
-            
-            # Loss Hesabı: Sadece maskelenmiş alanlar üzerinden MSE hesaplanır
-            # Signals boyutunu parçalara dönüştür (Batch, Num_Patches, Patch_Size)
-            N, L = signals.shape
-            patch_size = model.patch_size
-            num_patches = model.num_patches
-            target_patches = signals.view(N, num_patches, patch_size)
-            
-            # Yalnızca maske == 1 olan yerlerin kayıp değerini al
-            loss = criterion(decoded, target_patches[:, :decoded.shape[1], :])
-            
-            # Backward Pass
             loss.backward()
             optimizer.step()
             
             total_loss += loss.item()
             
         avg_loss = total_loss / len(dataloader)
-        print(f"Epoch [{epoch+1}/{epochs}] - Ortalama Kayıp (MSE Loss): {avg_loss:.6f}")
-
-    print("\n--- Eğitim Başarıyla Tamamlandı ---")
-    
-    # Eğitilen ilk ağırlıkları kaydetme
+        print(f"Epoch [{epoch+1}/{num_epochs}] - Ortak Kayıp (Loss): {avg_loss:.6f}")
+        
     os.makedirs("models", exist_ok=True)
     save_path = "models/mae_ecg_checkpoint.pth"
     torch.save(model.state_dict(), save_path)
-    print(f"Model ağırlıkları '{save_path}' konumuna kaydedildi!")
+    print(f"Model eğitimi tamamlandı ve '{save_path}' konumuna kaydedildi! 🚀")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     train_mae()

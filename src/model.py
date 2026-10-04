@@ -2,79 +2,88 @@ import torch
 import torch.nn as nn
 
 class ECGMaskedAutoencoder(nn.Module):
-    def __init__(self, signal_length=1000, patch_size=50, in_channels=1, embed_dim=128, mask_ratio=0.7):
+    """
+    1D Masked Autoencoder (MAE) - Esnek Kanal Desteği (1-lead veya 12-lead EKG)
+    """
+    def __init__(self, in_channels=12, seq_len=1000, patch_size=50, embed_dim=128, mask_ratio=0.7):
         super(ECGMaskedAutoencoder, self).__init__()
         
-        self.signal_length = signal_length
+        self.in_channels = in_channels
+        self.seq_len = seq_len
         self.patch_size = patch_size
-        self.num_patches = signal_length // patch_size
+        self.num_patches = seq_len // patch_size
         self.mask_ratio = mask_ratio
         
-        # Patch Embedding: Her EKG parçasını vektör temsiline dönüştürür
-        self.patch_embed = nn.Linear(patch_size, embed_dim)
+        # Patch Embedding: (Batch, in_channels, seq_len) -> (Batch, num_patches, embed_dim)
+        self.patch_embed = nn.Conv1d(
+            in_channels=in_channels, 
+            out_channels=embed_dim, 
+            kernel_size=patch_size, 
+            stride=patch_size
+        )
         
-        # Position Embedding: Sinyal parçalarının sırasını öğrenmesi için
+        # Positional Embedding
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim))
         
-        # Encoder (Basit Transformer / MLP Blok Yapısı)
+        # Encoder (Transformer Blocks)
         encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=4, batch_first=True)
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=3)
         
-        # Decoder: Maskelenmiş parçaları yeniden oluşturmak için
+        # Decoder (Reconstruction)
         decoder_layer = nn.TransformerDecoderLayer(d_model=embed_dim, nhead=4, batch_first=True)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=2)
         
-        # Output Projection: Tekrar orijinal sinyal boyutuna dönüştürme
-        self.head = nn.Linear(embed_dim, patch_size)
+        # Projection Back to Signal Space: embed_dim -> (in_channels * patch_size)
+        self.head = nn.Linear(embed_dim, in_channels * patch_size)
 
     def random_masking(self, x):
-        """
-        Sinyal parçalarının (patches) rastgele belirlenen oranını (%70) maskeler.
-        """
-        N, L, D = x.shape  # Batch, Num_Patches, Embed_Dim
+        N, L, D = x.shape
         len_keep = int(L * (1 - self.mask_ratio))
         
-        noise = torch.rand(N, L, device=x.device)  # Rastgele gürültü indeksi
+        noise = torch.rand(N, L, device=x.device)
         ids_shuffle = torch.argsort(noise, dim=1)
-        ids_restore = torch.argsort(ids_shuffle, dim=1)
-        
-        # Saklanacak (%30) parçaları seç
         ids_keep = ids_shuffle[:, :len_keep]
+        
+        # Maskelenmemiş patch'leri seç
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
-        
-        # Maske matrisi (1: maskelendi, 0: korundu)
-        mask = torch.ones([N, L], device=x.device)
-        mask[:, :len_keep] = 0
-        mask = torch.gather(mask, dim=1, index=ids_restore)
-        
-        return x_masked, mask, ids_restore
+        return x_masked, ids_keep
 
     def forward(self, x):
-        # x boyutu: (Batch, Signal_Length) -> (Batch, Num_Patches, Patch_Size)
-        N, L = x.shape
-        x_patches = x.view(N, self.num_patches, self.patch_size)
+        # x shape: (Batch, in_channels, seq_len)
+        if x.dim() == 2:
+            x = x.unsqueeze(1)  # (Batch, 1, seq_len) yap
+            
+        B, C, L = x.shape
         
-        # 1. Patch Embedding + Position Embedding
-        x_embed = self.patch_embed(x_patches) + self.pos_embed
+        # Patching & Embedding
+        x_patches = self.patch_embed(x).transpose(1, 2)  # (B, num_patches, embed_dim)
+        x_patches = x_patches + self.pos_embed
         
-        # 2. Random Masking
-        x_masked, mask, ids_restore = self.random_masking(x_embed)
+        # Masking
+        x_masked, mask_ids = self.random_masking(x_patches)
         
-        # 3. Encoder
-        latent = self.encoder(x_masked)
+        # Encoder
+        encoded = self.encoder(x_masked)
         
-        # 4. Reconstruct (Yeniden Oluşturma)
-        decoded = self.head(latent)
+        # Decoder
+        decoded_patches = self.decoder(encoded, encoded)
         
-        return decoded, mask
+        # Project back to signal
+        out = self.head(decoded_patches)  # (B, len_keep, in_channels * patch_size)
+        
+        return out, mask_ids
 
-if __name__ == '__main__':
-    # Test Etme: 2 Örnek EKG Sinyali (1000 uzunluğunda)
-    dummy_input = torch.randn(2, 1000)
-    model = ECGMaskedAutoencoder()
-    output, mask = model(dummy_input)
+if __name__ == "__main__":
+    print("Esnek MAE Modeli Test Ediliyor...")
+    # 12-lead PTB-XL testi
+    model_12lead = ECGMaskedAutoencoder(in_channels=12)
+    dummy_input_12 = torch.randn(4, 12, 1000)
+    out_12, mask_12 = model_12lead(dummy_input_12)
+    print(f"12-Lead Çıktı Şekli: {out_12.shape}")
     
-    print("--- MAE Model Test Başarılı ---")
-    print(f"Girdi Boyutu: {dummy_input.shape}")
-    print(f"Maske Boyutu: {mask.shape}")
-    print(f"Encoder Çıktı Parça Sayısı (Saklanan %30): {output.shape[1]}")
+    # 1-lead Klasik EKG testi
+    model_1lead = ECGMaskedAutoencoder(in_channels=1)
+    dummy_input_1 = torch.randn(4, 1, 1000)
+    out_1, mask_1 = model_1lead(dummy_input_1)
+    print(f"1-Lead Çıktı Şekli: {out_1.shape}")
+    print("Model modülü başarıyla doğrulandı! 🚀")
