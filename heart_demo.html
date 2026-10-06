@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Anatomik Kalp & EKG-XAI Simülasyonu</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      display: flex;
+      height: 100vh;
+    }
+    #canvas-container {
+      flex: 1;
+      position: relative;
+      outline: none;
+    }
+    #sidebar {
+      width: 380px;
+      background: #161b22;
+      border-left: 1px solid #30363d;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      z-index: 10;
+    }
+    h2 { font-size: 1.15rem; color: #58a6ff; margin-bottom: 4px; }
+    p.desc { font-size: 0.85rem; color: #8b949e; line-height: 1.4; }
+    .card {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    button {
+      background: #238636;
+      color: #fff;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    button:hover { background: #2ea043; }
+    button.secondary {
+      background: #30363d;
+      color: #c9d1d9;
+    }
+    button.secondary:hover { background: #3c444d; }
+    #ecg-canvas {
+      width: 100%;
+      height: 90px;
+      background: #090d13;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+    }
+    .controls-hint {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: rgba(22, 27, 34, 0.85);
+      border: 1px solid #30363d;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: #8b949e;
+      pointer-events: none;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      background: #1f6feb33;
+      color: #58a6ff;
+    }
+  </style>
+
+  <!-- Three.js ve OrbitControls CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container">
+    <div class="controls-hint">
+      🖱️ <b>Sol Tık + Sürükle:</b> 360° Çevir | <b>Tekerlek:</b> Yakınlaştır / Uzaklaştır | <b>Sağ Tık:</b> Kaydır
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div>
+      <h2>Robust ECG-MAE / 3D XAI</h2>
+      <p class="desc">3D Anatomik Kalp Modeli ve 12-Derivasyonlu EKG Bölgesel Aktivasyon Eşlemesi</p>
+    </div>
+
+    <!-- EKG Monitörü -->
+    <div class="card">
+      <div class="card-title">
+        <span>Canlı EKG Monitörü (Lead II)</span>
+        <span class="badge" id="bpm-label">72 BPM</span>
+      </div>
+      <canvas id="ecg-canvas"></canvas>
+    </div>
+
+    <!-- Kamera Açıları -->
+    <div class="card">
+      <div class="card-title">Standart Anatomik Bakış Açıları</div>
+      <div class="btn-grid">
+        <button class="secondary" onclick="setView('anterior')">Ön (Anterior)</button>
+        <button class="secondary" onclick="setView('posterior')">Arka (Posterior)</button>
+        <button class="secondary" onclick="setView('left-lateral')">Sol Yan (Lateral)</button>
+        <button class="secondary" onclick="setView('superior')">Üst / Apeks</button>
+      </div>
+    </div>
+
+    <!-- EKG Derivasyonu & XAI Vurgulama -->
+    <div class="card">
+      <div class="card-title">XAI Segment Eşlemesi (Derivasyon)</div>
+      <p class="desc" style="margin-bottom: 8px;">Modelin dikkat ağırlığının yoğunlaştığı anatomik bölgeyi 3D kalp üzerinde vurgular:</p>
+      <div class="btn-grid">
+        <button onclick="highlightSegment('anterior')">V3-V4 (Ön Duvar)</button>
+        <button onclick="highlightSegment('inferior')">II, III, aVF (Alt Duvar)</button>
+        <button onclick="highlightSegment('lateral')">I, aVL, V5-V6 (Yan Duvar)</button>
+        <button onclick="highlightSegment('septal')">V1-V2 (Septum/Sağ V.)</button>
+      </div>
+      <button class="secondary" style="width: 100%; margin-top: 8px;" onclick="resetHighlight()">Vurguyu Temizle</button>
+    </div>
+
+    <!-- Simülasyon Kontrolleri -->
+    <div class="card">
+      <div class="card-title">Kalp Atım Hızı (BPM)</div>
+      <input type="range" id="bpm-slider" min="40" max="160" value="72" style="width: 100%; accent-color: #238636;" oninput="updateBPM(this.value)">
+    </div>
+  </div>
+
+  <script>
+    // --- THREE.JS KURULUMU ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0e14);
+
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, 0, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    container.appendChild(renderer.domElement);
+
+    // 360 Derece Döndürme Kontrolü
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 1.0;
+
+    // --- IŞIKLANDIRMA ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight1.position.set(10, 15, 10);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0x58a6ff, 0.5);
+    dirLight2.position.set(-10, -10, -10);
+    scene.add(dirLight2);
+
+    // --- ANATOMİK KALP MODELLERİ VE GRUPLARI ---
+    const heartGroup = new THREE.Group();
+    scene.add(heartGroup);
+
+    // Miyokard Organik Malzemesi
+    const myocardiumMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8a151b,
+      roughness: 0.35,
+      metalness: 0.15,
+      emissive: 0x220002,
+      emissiveIntensity: 0.2
+    });
+
+    // 1. Sol ve Sağ Ventrikül Gövdesi (Konik, asimetrik anatomik form)
+    const ventriclesGeo = new THREE.SphereGeometry(3.2, 32, 32);
+    const pos = ventriclesGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let x = pos.getX(i);
+      let y = pos.getY(i);
+      let z = pos.getZ(i);
+
+      // Apeks sivrilmesi ve sola kıvrılma (Sol ventrikül yönü)
+      if (y < 0) {
+        let taper = 1.0 + (y / 3.5) * 0.65;
+        x *= taper;
+        z *= taper;
+        x -= Math.sin(y * 0.3) * 0.5; // sola apeks açılanması
+      } else {
+        // Taban genişlemesi
+        z *= 1.1;
+      }
+      pos.setXYZ(i, x, y, z);
+    }
+    ventriclesGeo.computeVertexNormals();
+
+    const ventriclesMesh = new THREE.Mesh(ventriclesGeo, myocardiumMaterial);
+    ventriclesMesh.position.set(0, -0.6, 0);
+    heartGroup.add(ventriclesMesh);
+
+    // 2. Sol ve Sağ Atriyumlar (Kulakçıklar)
+    const atriumMat = new THREE.MeshStandardMaterial({
+      color: 0x6e1017,
+      roughness: 0.5,
+      metalness: 0.1
+    });
+
+    // Sol Atriyum
+    const leftAtrium = new THREE.Mesh(new THREE.SphereGeometry(1.6, 24, 24), atriumMat);
+    leftAtrium.position.set(1.4, 2.2, -0.8);
+    leftAtrium.scale.set(1.1, 0.9, 1.2);
+    heartGroup.add(leftAtrium);
+
+    // Sağ Atriyum
+    const rightAtrium = new THREE.Mesh(new THREE.SphereGeometry(1.5, 24, 24), atriumMat);
+    rightAtrium.position.set(-1.6, 2.0, 0.2);
+    rightAtrium.scale.set(1.2, 0.8, 1.0);
+    heartGroup.add(rightAtrium);
+
+    // 3. Aort Arkı (Aorta - Oksijenli Kanı Taşıyan Büyük Damar)
+    const aortaCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.2, 1.8, 0.5),
+      new THREE.Vector3(0.1, 3.8, 0.3),
+      new THREE.Vector3(0.8, 4.4, -0.4),
+      new THREE.Vector3(1.6, 3.6, -1.2),
+      new THREE.Vector3(1.4, 1.0, -1.6)
+    ]);
+    const aortaGeo = new THREE.TubeGeometry(aortaCurve, 32, 0.7, 16, false);
+    const aortaMat = new THREE.MeshStandardMaterial({ color: 0x9b1c1c, roughness: 0.3, metalness: 0.2 });
+    const aortaMesh = new THREE.Mesh(aortaGeo, aortaMat);
+    heartGroup.add(aortaMesh);
+
+    // 4. Pulmoner Arter (Akciğer Atardamarı)
+    const paCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.4, 1.5, 1.2),
+      new THREE.Vector3(-0.8, 3.0, 0.8),
+      new THREE.Vector3(-1.8, 3.4, -0.2)
+    ]);
+    const paGeo = new THREE.TubeGeometry(paCurve, 24, 0.6, 16, false);
+    const paMat = new THREE.MeshStandardMaterial({ color: 0x224488, roughness: 0.35, metalness: 0.1 });
+    const paMesh = new THREE.Mesh(paGeo, paMat);
+    heartGroup.add(paMesh);
+
+    // 5. Vena Cava (Ana Toplardamar)
+    const vcCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-2.2, 4.0, -0.6),
+      new THREE.Vector3(-2.0, 2.2, -0.4),
+      new THREE.Vector3(-1.8, 0.2, -0.2)
+    ]);
+    const vcGeo = new THREE.TubeGeometry(vcCurve, 20, 0.55, 16, false);
+    const vcMesh = new THREE.Mesh(vcGeo, paMat);
+    heartGroup.add(vcMesh);
+
+    // 6. Koroner Damar Dallanmaları
+    function createVessel(points, radius, colorHex) {
+      const curve = new THREE.CatmullRomCurve3(points);
+      const geo = new THREE.TubeGeometry(curve, 20, radius, 8, false);
+      const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 });
+      return new THREE.Mesh(geo, mat);
+    }
+    // LAD (Sol Ön İnen Arter)
+    const ladVessel = createVessel([
+      new THREE.Vector3(0.0, 1.8, 2.4),
+      new THREE.Vector3(0.2, 0.5, 2.7),
+      new THREE.Vector3(-0.1, -1.2, 2.2),
+      new THREE.Vector3(-0.4, -2.6, 1.2)
+    ], 0.1, 0xd12424);
+    heartGroup.add(ladVessel);
+
+    // Kalp grubunu anatomik oryantasyon için hafif öne eğiyoruz
+    heartGroup.rotation.x = 0.15;
+    heartGroup.rotation.y = -0.2;
+
+    // --- KALP ATIMI VE ANİMASYON ---
+    let bpm = 72;
+    let clock = new THREE.Clock();
+
+    function updateBPM(val) {
+      bpm = parseInt(val);
+      document.getElementById('bpm-label').innerText = bpm + ' BPM';
+    }
+
+    // --- EKG ÇİZİMİ (CANLI SİNÜS RİTMİ) ---
+    const ecgCanvas = document.getElementById('ecg-canvas');
+    const ecgCtx = ecgCanvas.getContext('2d');
+    ecgCanvas.width = 340;
+    ecgCanvas.height = 90;
+
+    let ecgPoints = [];
+    const maxPoints = 200;
+    for (let i = 0; i < maxPoints; i++) ecgPoints.push(45);
+
+    function getEcgY(t) {
+      const cycle = t % 1.0;
+      let y = 45;
+      if (cycle > 0.15 && cycle < 0.25) {
+        // P dalgası (Atriyal depolarizasyon)
+        y -= 8 * Math.sin((cycle - 0.15) * 10 * Math.PI);
+      } else if (cycle >= 0.35 && cycle < 0.38) {
+        // Q çentiği
+        y += 6;
+      } else if (cycle >= 0.38 && cycle < 0.43) {
+        // R piki (Ventriküler sistol tepe noktası)
+        y -= 38;
+      } else if (cycle >= 0.43 && cycle < 0.47) {
+        // S çentiği
+        y += 10;
+      } else if (cycle >= 0.58 && cycle < 0.75) {
+        // T dalgası (Ventriküler repolarizasyon)
+        y -= 14 * Math.sin((cycle - 0.58) / 0.17 * Math.PI);
+      }
+      return y;
+    }
+
+    // --- XAI / BÖLGE VURGULAMA ---
+    function highlightSegment(region) {
+      // Önce varsayılan renge dön
+      resetHighlight();
+      if (region === 'anterior') {
+        // V3-V4: LAD ve Ön Ventrikül apeks duvarı
+        ventriclesMesh.material.emissive = new THREE.Color(0xffaa00);
+        ventriclesMesh.material.emissiveIntensity = 0.6;
+        ladVessel.material.emissive = new THREE.Color(0xffff00);
+        ladVessel.material.emissiveIntensity = 0.8;
+      } else if (region === 'inferior') {
+        // II, III, aVF: Kalbin alt tabanı
+        ventriclesMesh.material.emissive = new THREE.Color(0xff3300);
+        ventriclesMesh.material.emissiveIntensity = 0.7;
+      } else if (region === 'lateral') {
+        // I, aVL, V5-V6: Sol yan duvar
+        leftAtrium.material.emissive = new THREE.Color(0x00ff88);
+        leftAtrium.material.emissiveIntensity = 0.6;
+        ventriclesMesh.material.emissive = new THREE.Color(0x00aa55);
+        ventriclesMesh.material.emissiveIntensity = 0.5;
+      } else if (region === 'septal') {
+        // V1-V2: Sağ ventrikül ve septum
+        rightAtrium.material.emissive = new THREE.Color(0x3388ff);
+        rightAtrium.material.emissiveIntensity = 0.7;
+      }
+    }
+
+    function resetHighlight() {
+      ventriclesMesh.material.emissive = new THREE.Color(0x220002);
+      ventriclesMesh.material.emissiveIntensity = 0.2;
+      leftAtrium.material.emissive = new THREE.Color(0x000000);
+      rightAtrium.material.emissive = new THREE.Color(0x000000);
+      ladVessel.material.emissive = new THREE.Color(0x000000);
+    }
+
+    function setView(view) {
+      controls.reset();
+      if (view === 'anterior') {
+        camera.position.set(0, 0, 18);
+      } else if (view === 'posterior') {
+        camera.position.set(0, 0, -18);
+      } else if (view === 'left-lateral') {
+        camera.position.set(18, 0, 0);
+      } else if (view === 'superior') {
+        camera.position.set(0, 18, 2);
+      }
+    }
+
+    // --- ANİMASYON DÖNGÜSÜ ---
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const elapsedTime = clock.getElapsedTime();
+      const beatFrequency = bpm / 60.0;
+      const beatCycle = (elapsedTime * beatFrequency) % 1.0;
+
+      // Fizyolojik Kasılma (Sistol - Diyastol dinamikleri)
+      // R piki anında güçlü ventriküler kasılma ve apeks torsiyonu
+      let scale = 1.0;
+      if (beatCycle > 0.35 && beatCycle < 0.55) {
+        // Sistol kontraksiyonu
+        const contraction = Math.sin((beatCycle - 0.35) / 0.2 * Math.PI);
+        scale = 1.0 - contraction * 0.08;
+        ventriclesMesh.rotation.y = contraction * 0.05; // Ventrikül burulması (torsion)
+      } else {
+        // Diyastol gevşemesi
+        ventriclesMesh.rotation.y = 0;
+      }
+      heartGroup.scale.set(scale, scale * 1.02, scale);
+
+      // EKG Çizimi Güncellemesi
+      ecgPoints.push(getEcgY(beatCycle));
+      if (ecgPoints.length > maxPoints) ecgPoints.shift();
+
+      ecgCtx.clearRect(0, 0, ecgCanvas.width, ecgCanvas.height);
+      ecgCtx.strokeStyle = '#00ff9d';
+      ecgCtx.lineWidth = 2;
+      ecgCtx.beginPath();
+      for (let i = 0; i < ecgPoints.length; i++) {
+        let x = (i / maxPoints) * ecgCanvas.width;
+        let y = ecgPoints[i];
+        if (i === 0) ecgCtx.moveTo(x, y);
+        else ecgCtx.lineTo(x, y);
+      }
+      ecgCtx.stroke();
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
