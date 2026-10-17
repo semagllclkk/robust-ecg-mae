@@ -22,7 +22,7 @@ function vnoise(x, y, z) {
   );
 }
 
-export function fbm(x, y, z) {
+function fbm(x, y, z) {
   return (
     0.5 * vnoise(x, y, z) +
     0.25 * vnoise(2 * x, 2 * y, 2 * z) +
@@ -292,18 +292,18 @@ export function vesselSpecs() {
   return S;
 }
 
-export const LAD_XY = [
+const LAD_XY = [
   [33, 501.5], [37.5, 500.1], [40.2, 494.7], [42, 488.2], [44.3, 483.4],
   [43.7, 477.3], [45.4, 471], [45.8, 464.7], [48.1, 459.2], [51.7, 449.1],
   [56.2, 439.3], [59.5, 428.5],
 ];
 
-export const RCA_XY = [
+const RCA_XY = [
   [-3.9, 492.9], [-10.3, 484.7], [-17.8, 477.4], [-22.7, 465.7],
   [-24.3, 457], [-24.2, 449.4], [-22.5, 445.1], [-18, 437.4], [-7.9, 433.8],
 ];
 
-export function projectToSurface(x, y, meshes, offset) {
+function projectToSurface(x, y, meshes, offset) {
   const rc = new THREE.Raycaster(V3(x, y, 400), V3(0, 0, -1), 0, 1000);
   const hits = rc.intersectObjects(meshes, false);
   if (!hits.length) return null;
@@ -518,7 +518,7 @@ export const INFO = {
   },
 };
 
-export const VINFO = {
+const VINFO = {
   aorta: {
     title: 'Aort',
     category: 'Büyük Damar',
