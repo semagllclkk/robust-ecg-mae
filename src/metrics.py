@@ -66,11 +66,11 @@ class ReconstructionMeter:
         self.r2, self.pearson = [], []
 
     @torch.no_grad()
-    def update(self, recon, signal, lead_mask, sigma):
-        if recon is None or not lead_mask.any():
+    def update(self, recon, signal, dropped, sigma):
+        if recon is None or not dropped.any():
             return
-        r, t = recon[lead_mask].float(), signal[lead_mask].float()   # (N, L)
-        s = sigma.to(recon.device)[lead_mask].float()                # (N,)
+        r, t = recon[dropped].float(), signal[dropped].float()   # (N, L)
+        s = sigma.to(recon.device)[dropped].float()                # (N,)
         keep = s > 1e-6                                              # düz (sabit) derivasyonları atla
         r, t, s = r[keep], t[keep], s[keep]
         if r.numel() == 0:

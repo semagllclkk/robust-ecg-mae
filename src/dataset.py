@@ -38,16 +38,20 @@ class PTBXLProcessedDataset(Dataset):
       hedef["mi"]    : skaler, 1 = MI, 0 = Normal
       hedef["walls"] : (3,) Anterior/Inferior/Lateral MI (AMI/IMI/LMI) çoklu etiket — kriz tipi
       hedef["mu"], hedef["sigma"] : (12,) z-score istatistikleri (mV cinsinden RMSE için)
-    Yalnızca label >= 0 olan kayıtlar alınır. X.npy bellek eşlemeli (mmap) açılır;
+    balanced=True: Rapor Md. 2.1'deki dengeli MI / Normal alt kümesi (her bölümde MI sayısı kadar Normal).
+    balanced=False: tüm MI ve Normal kayıtlar (label >= 0). X.npy bellek eşlemeli (mmap) açılır;
     ~1 GB'lık dosya RAM'e tümüyle yüklenmez.
     """
-    def __init__(self, split="train", processed_dir="data/processed", transform=None):
+    def __init__(self, split="train", processed_dir="data/processed", transform=None, balanced=True):
         import os
         import pandas as pd
         from src.ecg_constants import WALL_NAMES, WALL_TO_SUBCLASS
 
         meta = pd.read_csv(os.path.join(processed_dir, "meta.csv"), index_col="ecg_id")
-        mask = ((meta["split"] == split) & (meta["label"] >= 0)).to_numpy()
+        mask = (meta["split"] == split) & (meta["label"] >= 0)
+        if balanced:
+            mask &= meta["balanced"] == 1
+        mask = mask.to_numpy()
 
         self.indices = np.flatnonzero(mask)
         self.X = np.load(os.path.join(processed_dir, "X.npy"), mmap_mode="r")

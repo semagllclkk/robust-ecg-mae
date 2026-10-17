@@ -17,7 +17,8 @@ from reportlab.pdfgen import canvas
 from src.ecg_constants import (FS, LEAD_NAMES, SEQ_LEN, WALL_GROUPS, WALL_LEAD_INDICES, WALL_NAMES,
                                WALL_TO_ARTERY, WALL_TO_SUBCLASS)
 from src.model import ECGMaskedAutoencoder
-from src.preprocess import preprocess_ecg
+from src.einthoven import einthoven_complete
+from src.preprocessing import preprocess_ecg
 from src.st_analysis import MV_PER_MM, st_deviation_mv
 from src.train import load_checkpoint
 
@@ -92,7 +93,7 @@ CONDITIONS = {
 def load_dataset():
     # İlk çağrıdaki GPU (MPS/CUDA) çekirdek derleme gecikmesini kullanıcı isteğinden önce öde
     with torch.no_grad():
-        model(torch.zeros(1, 12, SEQ_LEN, device=device), lead_mask=torch.zeros(1, 12, dtype=torch.bool, device=device))
+        model(torch.zeros(1, 12, SEQ_LEN, device=device), torch.ones(1, 12, device=device))
     try:
         meta = pd.read_csv(os.path.join(PROCESSED_DIR, "meta.csv"), index_col="ecg_id")
         sigma = np.load(os.path.join(PROCESSED_DIR, "sigma.npy"))
@@ -137,13 +138,14 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
     z      : (12, 1000) filtrelenmiş + z-score sinyal (kopan kanalların içeriği kullanılmaz)
     mu/sigma: (12,) mV'a dönüş istatistikleri (kopan kanallar için popülasyon değeri verilmeli)
     """
-    lead_mask = torch.zeros(1, 12, dtype=torch.bool, device=device)
-    lead_mask[0, disabled] = True
+    # Rapor Md. 2.2: M ∈ {0,1}^12 (1 = sağlam, 0 = koptu), X_masked = X ⊙ M
+    M = torch.ones(1, 12, device=device)
+    M[0, disabled] = 0.0
     x = torch.tensor(np.asarray(z, dtype=np.float32), device=device).unsqueeze(0)
 
     t0 = time.perf_counter()
     with torch.no_grad():
-        out = model(x, lead_mask=lead_mask)
+        out = model(x * M.unsqueeze(-1), M)
     if device.type == "mps":
         torch.mps.synchronize()
     inference_ms = (time.perf_counter() - t0) * 1000
@@ -151,12 +153,23 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
     recon_z = out["recon"][0].float().cpu().numpy()
     mi_prob = float(torch.sigmoid(out["mi_logit"]).item())
     wall_prob = torch.sigmoid(out["wall_logits"][0]).float().cpu().numpy()
-    lead_attn = out["lead_attn"][0].float().cpu().numpy()
+    # Md. 2.5: XAI, Spatial Attention katmanının dikkat ağırlıklarından
+    lead_attn = out["lead_importance"][0].float().cpu().numpy()
+    spatial = out["spatial_attention"][0].float().cpu().numpy()  # (sorgu, anahtar)
+    reconstruction_sources = {
+        LEAD_NAMES[i]: {LEAD_NAMES[j]: float(spatial[i, j]) for j in np.argsort(-spatial[i])[:3]}
+        for i in disabled
+    }
 
     # Ekranda gösterilecek 12 kanal (mV): sağlam kanallar orijinal, kopanlar MAE rekonstrüksiyonu
     z_filled = np.array(z, dtype=np.float32, copy=True)
     z_filled[disabled] = recon_z[disabled]
     filled_mv = z_filled * sigma[:, None] + mu[:, None]
+    # Risk 1 B planı: kopan ekstremite derivasyonları sağlam olanlardan Einthoven bağıntılarıyla kesin hesaplanır
+    limb_dropped = [i for i in disabled if i < 6]
+    if limb_dropped:
+        limb = einthoven_complete(torch.from_numpy(filled_mv).float().unsqueeze(0), M.cpu())[0].numpy()
+        filled_mv[limb_dropped] = limb[limb_dropped]
 
     is_mi = mi_prob >= DECISION_THRESHOLD
     confidence = mi_prob if is_mi else 1.0 - mi_prob
@@ -206,6 +219,7 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
     return {
         "model_loaded": MODEL_LOADED,
         "units": "mV",
+        "einthoven_completed_leads": [LEAD_NAMES[i] for i in limb_dropped],
         "lead_names": LEAD_NAMES,
         "active_lead_count": 12 - len(disabled),
         "dropped_lead_names": [LEAD_NAMES[i] for i in disabled],
@@ -216,6 +230,8 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
         "mi_probability": mi_prob,
         "wall_damage_scores": damage,
         "lead_attention": dict(zip(LEAD_NAMES, lead_attn.tolist())),
+        "spatial_attention": spatial.tolist(),
+        "reconstruction_sources": reconstruction_sources,
         "st_deviation_mm": {LEAD_NAMES[j]: (None if np.isnan(v) else round(float(v) / MV_PER_MM, 2))
                             for j, v in enumerate(st_mv)},
         "st_reference_lead": st_ref,

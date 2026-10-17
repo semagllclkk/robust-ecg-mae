@@ -11,13 +11,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def masked_mse(recon, target, lead_mask):
+def masked_mse(recon, target, dropped):
     """
-    Yalnızca düşürülen (lead_mask=True) derivasyonlar üzerinde ortalama karesel hata.
-    recon, target : (B, C, L);  lead_mask : (B, C) bool
+    Yalnızca kopan (dropped=True, yani M=0) derivasyonlar üzerinde ortalama karesel hata.
+    recon, target : (B, C, L);  dropped : (B, C) bool
     Batch'te hiç kanal düşmemişse 0 döner (grafik bağlantısı korunur).
     """
-    m = lead_mask.unsqueeze(-1).to(recon.dtype)
+    m = dropped.unsqueeze(-1).to(recon.dtype)
     n = m.sum() * recon.shape[-1]
     if n == 0:
         return recon.sum() * 0.0
@@ -57,7 +57,7 @@ class MultiTaskLoss(nn.Module):
         focal = cls + wall
 
         if out["recon"] is not None:
-            rec = masked_mse(out["recon"], signal, out["lead_mask"])
+            rec = masked_mse(out["recon"], signal, out["M"] < 0.5)  # yalnızca kopan (M=0) kanallar
         else:
             rec = torch.zeros((), device=signal.device)
 

@@ -22,8 +22,9 @@ from torch.utils.data import DataLoader
 
 from src.dataset import PTBXLProcessedDataset
 from src.ecg_constants import LEAD_NAMES, WALL_GROUPS, WALL_NAMES
+from src.einthoven import einthoven_complete
 from src.losses import MultiTaskLoss
-from src.model import random_lead_mask, wall_lead_mask
+from src.lead_dropout import random_keep_mask, wall_keep_mask
 from src.train import BASELINE_PATH, CHECKPOINT_PATH, evaluate, get_device, load_checkpoint
 
 TARGET_F1 = 0.88
@@ -35,9 +36,9 @@ TARGET_FNR_REDUCTION = 0.25
 def scenarios():
     s = {"0 kopuk (tam 12 kanal)": None}
     for k in range(1, 5):
-        s[f"rastgele {k} kanal"] = (lambda B, g, k=k: random_lead_mask(B, n_drop=k, generator=g))
+        s[f"rastgele {k} kanal"] = (lambda B, g, k=k: random_keep_mask(B, n_drop=k, generator=g))
     for wall in WALL_NAMES:
-        s[f"kritik {wall} ({', '.join(WALL_GROUPS[wall])})"] = (lambda B, g, w=wall: wall_lead_mask(B, w))
+        s[f"kritik {wall} ({', '.join(WALL_GROUPS[wall])})"] = (lambda B, g, w=wall: wall_keep_mask(B, w))
     return s
 
 
@@ -54,10 +55,13 @@ def run_all(model, ckpt, loader, device):
 def print_table(title, results):
     print(f"\n=== {title} ===")
     print(f"{'senaryo':38s} | {'AUROC':>6} {'F1':>6} {'Duyar.':>6} {'Özgül.':>6} {'FNR':>6} {'DuvarAUC':>8} | "
-          f"{'RMSE(z)':>7} {'RMSE(mV)':>8} {'R²':>6} {'r':>6}")
+          f"{'RMSE(z)':>7} {'RMSE(mV)':>8} {'R²':>6} {'r':>6} | {'+Einthoven: RMSE(mV)':>20} {'R²':>6} {'r':>6}")
     for name, r in results.items():
-        rec = (f"{r['rmse_z']:7.4f} {r['rmse_mv']:8.4f} {r['r2']:6.3f} {r['pearson_r']:6.3f}"
-               if not np.isnan(r["rmse_z"]) else f"{'-':>7} {'-':>8} {'-':>6} {'-':>6}")
+        if np.isnan(r["rmse_z"]):
+            rec = f"{'-':>7} {'-':>8} {'-':>6} {'-':>6} | {'-':>20} {'-':>6} {'-':>6}"
+        else:
+            rec = (f"{r['rmse_z']:7.4f} {r['rmse_mv']:8.4f} {r['r2']:6.3f} {r['pearson_r']:6.3f} | "
+                   f"{r['ein_rmse_mv']:20.4f} {r['ein_r2']:6.3f} {r['ein_pearson_r']:6.3f}")
         print(f"{name:38s} | {r['auroc']:6.4f} {r['f1']:6.4f} {r['sens']:6.4f} {r['spec']:6.4f} {r['fnr']:6.4f} "
               f"{r['wall_auroc_macro']:8.4f} | {rec}")
 
@@ -72,8 +76,13 @@ def check_targets(results, baseline=None):
     ok = lambda b: "✓" if b else "✗"
     print(f"{ok(min_f1 > TARGET_F1)} En düşük F1 = {min_f1:.4f}  (hedef > {TARGET_F1})")
     print(f"{ok(max_rmse_mv < TARGET_RMSE)} En yüksek RMSE = {max_rmse_mv:.4f} mV  (hedef < {TARGET_RMSE}; "
-          f"z-score biriminde {max_rmse_z:.4f})")
-    print(f"{ok(min_r2 > TARGET_R2)} En düşük R² = {min_r2:.4f}  (hedef > {TARGET_R2})")
+          f"z-score biriminde {max_rmse_z:.4f})  [yalnızca MAE]")
+    print(f"{ok(min_r2 > TARGET_R2)} En düşük R² = {min_r2:.4f}  (hedef > {TARGET_R2})  [yalnızca MAE]")
+    if "ein_r2" in next(iter(drop.values())):
+        e_rmse = max(r["ein_rmse_mv"] for r in drop.values())
+        e_r2 = min(r["ein_r2"] for r in drop.values())
+        print(f"{ok(e_rmse < TARGET_RMSE)} En yüksek RMSE = {e_rmse:.4f} mV  [MAE + Einthoven kısıtı, Risk 1 B planı]")
+        print(f"{ok(e_r2 > TARGET_R2)} En düşük R² = {e_r2:.4f}  [MAE + Einthoven kısıtı, Risk 1 B planı]")
     if baseline is not None:
         reductions = []
         for name in drop:
@@ -86,17 +95,25 @@ def check_targets(results, baseline=None):
     return None
 
 
-def plot_reconstruction(model, dataset, device, out_path, wall="Anterior"):
-    """Bir MI test kaydında belirli bir duvarın tüm derivasyonları koptuğunda rekonstrüksiyon (mV)."""
+def plot_reconstruction(model, dataset, device, out_path, wall="Anterior", use_einthoven=False):
+    """
+    Bir MI test kaydında belirli bir duvarın tüm derivasyonları koptuğunda rekonstrüksiyon (mV).
+    use_einthoven=True: kopan ekstremite derivasyonları Einthoven kısıtıyla hesaplanır (Risk 1 B planı).
+    """
     idx = int(np.flatnonzero(dataset.labels == 1)[0])
     x, target = dataset[idx]
-    lead_mask = wall_lead_mask(1, wall).to(device)
+    M = wall_keep_mask(1, wall).to(device)
     with torch.no_grad():
-        out = model(x.unsqueeze(0).to(device), lead_mask=lead_mask)
+        out = model(x.unsqueeze(0).to(device) * M.unsqueeze(-1), M)
     mu, sigma = target["mu"].numpy()[:, None], target["sigma"].numpy()[:, None]
     orig = x.numpy() * sigma + mu
     recon = out["recon"][0].float().cpu().numpy() * sigma + mu
-    dropped = lead_mask[0].cpu().numpy()
+    dropped = (M[0] < 0.5).cpu().numpy()
+    label = "MAE rekonstrüksiyonu"
+    if use_einthoven:
+        limb = einthoven_complete(torch.from_numpy(orig).unsqueeze(0).float(), M.cpu())[0].numpy()
+        recon[:6] = np.where(dropped[:6, None], limb, recon[:6])
+        label = "MAE + Einthoven kısıtı"
     p_mi = torch.sigmoid(out["mi_logit"]).item()
 
     t = np.arange(orig.shape[1]) / 100
@@ -104,7 +121,7 @@ def plot_reconstruction(model, dataset, device, out_path, wall="Anterior"):
     for c, ax in enumerate(axes):
         ax.plot(t, orig[c], color="black", linewidth=0.8, label="Orijinal (filtreli)")
         if dropped[c]:
-            ax.plot(t, recon[c], color="crimson", linewidth=0.9, label="MAE rekonstrüksiyonu")
+            ax.plot(t, recon[c], color="crimson", linewidth=0.9, label=label)
             ax.set_facecolor("#fdecec")
         ax.set_ylabel(LEAD_NAMES[c] + (" ✗" if dropped[c] else ""), rotation=0, labelpad=22)
         ax.grid(True, linestyle="--", alpha=0.4)
@@ -149,8 +166,10 @@ def main():
         json.dump({"mae": results, "resnet1d": baseline, "fnr_reduction": fnr_reduction,
                    "threshold": ckpt["threshold"]}, f, indent=2, ensure_ascii=False)
     plot_path = os.path.join(args.out_dir, "reconstruction_anterior.png")
-    plot_reconstruction(model, test_set, device, plot_path)
-    print(f"\nSonuçlar: {args.out_dir}/test_results.json   Grafik: {plot_path}")
+    plot_reconstruction(model, test_set, device, plot_path, wall="Anterior")
+    plot_path2 = os.path.join(args.out_dir, "reconstruction_inferior_einthoven.png")
+    plot_reconstruction(model, test_set, device, plot_path2, wall="Inferior", use_einthoven=True)
+    print(f"\nSonuçlar: {args.out_dir}/test_results.json   Grafikler: {plot_path}, {plot_path2}")
 
 
 if __name__ == "__main__":

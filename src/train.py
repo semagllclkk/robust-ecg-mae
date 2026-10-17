@@ -19,9 +19,11 @@ import torch
 from torch.utils.data import DataLoader
 
 from src.dataset import PTBXLProcessedDataset
+from src.einthoven import einthoven_complete
+from src.lead_dropout import LeadDropoutCollate, apply_lead_mask, full_keep_mask, random_keep_mask
 from src.losses import MultiTaskLoss
 from src.metrics import ClassificationMeter, ReconstructionMeter, best_f1_threshold
-from src.model import build_model, random_lead_mask
+from src.model import build_model
 
 CHECKPOINT_PATH = "models/mae_ecg_checkpoint.pth"
 BASELINE_PATH = "models/resnet1d_baseline.pth"
@@ -41,42 +43,63 @@ def autocast(device, enabled):
     return nullcontext()
 
 
+def _float_outputs(out):
+    return {k: (v.float() if torch.is_tensor(v) and v.is_floating_point() else v) for k, v in out.items()}
+
+
+def _with_einthoven(recon, x, M, target):
+    """
+    Risk 1 B planı: kopan ekstremite derivasyonlarını sağlam ekstremite derivasyonlarından Einthoven
+    bağıntılarıyla hesaplar (mV uzayında), metrik için z-score uzayına geri çevirir.
+    Kopan kanalların içeriği kullanılmaz; μ/σ dönüşümü tahmin ve hedefe aynı uygulandığından R² değişmez.
+    """
+    mu, sigma = target["mu"].unsqueeze(-1), target["sigma"].unsqueeze(-1).clamp(min=1e-6)
+    limb_mv = einthoven_complete(x * sigma + mu, M)
+    limb_z = (limb_mv - mu[:, :6]) / sigma[:, :6]
+    out = recon.clone()
+    out[:, :6] = torch.where(M[:, :6].unsqueeze(-1) > 0.5, recon[:, :6], limb_z)
+    return out
+
+
 def mixed_dropout_mask(batch_size, generator):
     """Doğrulama senaryosu: eğitim dağılımıyla aynı (k ∈ [1,4], %30 kritik kopma), sabit tohumlu."""
-    return random_lead_mask(batch_size, critical_prob=0.3, generator=generator)
+    return random_keep_mask(batch_size, critical_prob=0.3, generator=generator)
 
 
 @torch.no_grad()
 def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, amp=True, max_batches=None):
     """
-    mask_fn(batch_size, generator) -> (B, 12) bool kopma maskesi.  None ise hiçbir kanal kopmaz.
+    mask_fn(batch_size, generator) -> (B, 12) M maskesi (1 = sağlam, 0 = koptu). None ise hiçbir kanal kopmaz.
     Döndürür: kayıp bileşenleri + teşhis metrikleri + rekonstrüksiyon metrikleri (+ ham olasılıklar)
     """
     model.eval()
     gen = torch.Generator().manual_seed(seed)
     totals = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0}
-    cls_meter, rec_meter = ClassificationMeter(), ReconstructionMeter()
+    cls_meter, rec_meter, ein_meter = ClassificationMeter(), ReconstructionMeter(), ReconstructionMeter()
     n_batches = 0
     for i, (x, target) in enumerate(loader):
         if max_batches is not None and i >= max_batches:
             break
+        B = x.shape[0]
+        M = (mask_fn(B, gen) if mask_fn else full_keep_mask(B)).to(device)
         x = x.to(device)
         target = {k: v.to(device) for k, v in target.items()}
-        B = x.shape[0]
-        lead_mask = (mask_fn(B, gen) if mask_fn else torch.zeros(B, 12, dtype=torch.bool)).to(device)
         with autocast(device, amp):
-            out = model(x, lead_mask=lead_mask)
-        out = {k: (v.float() if torch.is_tensor(v) and v.is_floating_point() else v) for k, v in out.items()}
+            out = model(apply_lead_mask(x, M), M)
+        out = _float_outputs(out)
         loss, parts = criterion(out, x, target)
         totals["loss"] += loss.item()
         for k in ("rec", "cls", "wall"):
             totals[k] += parts[k]
         cls_meter.update(out, target)
-        rec_meter.update(out["recon"], x, out["lead_mask"], target["sigma"])
+        rec_meter.update(out["recon"], x, M < 0.5, target["sigma"])
+        if out["recon"] is not None:
+            ein_meter.update(_with_einthoven(out["recon"], x, M, target), x, M < 0.5, target["sigma"])
         n_batches += 1
     results = {k: v / max(n_batches, 1) for k, v in totals.items()}
     results.update(cls_meter.result(threshold))
     results.update(rec_meter.result())
+    results.update({f"ein_{k}": v for k, v in ein_meter.result().items()})
     results["_labels"], results["_probs"] = cls_meter.arrays()
     return results
 
@@ -123,9 +146,16 @@ def main():
     train_set = PTBXLProcessedDataset("train", args.processed_dir)
     val_set = PTBXLProcessedDataset("val", args.processed_dir)
     pos_frac = train_set.positive_fraction()
-    print(f"Eğitim: {len(train_set)} kayıt (MI oranı {pos_frac:.3f})   Doğrulama: {len(val_set)} kayıt")
+    print(f"Dengeli alt kümeler — eğitim: {len(train_set)} kayıt (MI oranı {pos_frac:.3f})   "
+          f"doğrulama: {len(val_set)} kayıt")
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    if args.arch == "mae":
+        # LeadDropout DataLoader seviyesinde (Rapor Md. 2.2): her batch için k ∈ [min_drop, max_drop]
+        collate = LeadDropoutCollate(args.min_drop, args.max_drop, args.critical_prob)
+        print(f"LeadDropout: batch başına k ∈ [{args.min_drop}, {args.max_drop}], kritik kopma olasılığı {args.critical_prob}")
+    else:
+        collate = None  # klasik mimari: kopma simülasyonu olmadan eğitilir
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True, collate_fn=collate)
     val_loader = DataLoader(val_set, batch_size=64, shuffle=False)
 
     if args.focal_alpha == "auto":
@@ -136,15 +166,15 @@ def main():
         focal_alpha = float(args.focal_alpha)
 
     if args.arch == "mae":
-        config = dict(in_channels=12, seq_len=1000, embed_dim=128, depth=2, num_heads=4,
-                      min_drop=args.min_drop, max_drop=args.max_drop, critical_prob=args.critical_prob)
+        config = dict(in_channels=12, seq_len=1000, embed_dim=128, depth=2, num_heads=4)
         alpha_mse = args.alpha_mse
     else:
         config = dict(in_channels=12)
         alpha_mse = 0.0  # 1D-ResNet rekonstrüksiyon yapmaz
     model = build_model(args.arch, config).to(device)
     criterion = MultiTaskLoss(alpha_mse, args.beta_focal, args.gamma, focal_alpha)
-    print(f"Kayıp: {alpha_mse}·MSE(maskeli) + {args.beta_focal}·Focal(γ={args.gamma}, α={focal_alpha if focal_alpha is None else round(focal_alpha, 3)})")
+    print(f"Kayıp: {alpha_mse}·MSE(maskeli) + {args.beta_focal}·Focal(γ={args.gamma}, "
+          f"α={focal_alpha if focal_alpha is None else round(focal_alpha, 3)})")
     print(f"Parametre sayısı: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -169,15 +199,20 @@ def main():
         t0 = time.time()
         sums = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0}
         n_batches = 0
-        for i, (x, target) in enumerate(train_loader):
+        for i, batch in enumerate(train_loader):
             if args.limit_batches is not None and i >= args.limit_batches:
                 break
-            x = x.to(device)
+            if collate is not None:
+                x_masked, x, M, target = batch
+            else:
+                x, target = batch
+                M = full_keep_mask(x.shape[0])
+                x_masked = x
+            x_masked, x, M = x_masked.to(device), x.to(device), M.to(device)
             target = {k: v.to(device) for k, v in target.items()}
             with autocast(device, amp):
-                out = model(x)  # LeadDropout eğitim modunda kopma maskesini üretir
-            out = {k: (v.float() if torch.is_tensor(v) and v.is_floating_point() else v) for k, v in out.items()}
-            loss, parts = criterion(out, x, target)
+                out = model(x_masked, M)
+            loss, parts = criterion(_float_outputs(out), x, target)
 
             optimizer.zero_grad()
             loss.backward()
@@ -216,7 +251,9 @@ def main():
             torch.save({"arch": args.arch, "model_state": model.state_dict(), "config": config, "epoch": epoch,
                         "val_metrics": {k: v for k, v in val.items() if not k.startswith("_")},
                         "threshold": threshold, "focal_alpha": focal_alpha, "focal_gamma": args.gamma,
-                        "alpha_mse": alpha_mse, "beta_focal": args.beta_focal}, checkpoint_path)
+                        "alpha_mse": alpha_mse, "beta_focal": args.beta_focal,
+                        "lead_dropout": {"min_drop": args.min_drop, "max_drop": args.max_drop,
+                                         "critical_prob": args.critical_prob}}, checkpoint_path)
             print(f"  ✓ En iyi model kaydedildi (val AUROC {best_auroc:.4f}, F1-eşiği {threshold:.2f}) -> {checkpoint_path}")
         else:
             bad_epochs += 1

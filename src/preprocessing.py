@@ -1,5 +1,5 @@
 """
-Sinyal ön işleme fonksiyonları (TÜBİTAK Raporu Md. 2.1).
+Sinyal ön işleme modülü — preprocessing.py (TÜBİTAK Raporu Md. 2.1, İP1 başarı ölçütü).
 
 - 0.5–45 Hz, 4. derece, çift yönlü (sıfır faz) Butterworth bant geçiren filtre
 - Derivasyon bazında Z-score standardizasyonu

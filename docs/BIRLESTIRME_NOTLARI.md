@@ -5,7 +5,7 @@ Bu belge, Zilan'ın backend tarafını (İP1, İP3, İP5-backend) Sema'nın aray
 ## Çalıştırma (proje kök klasöründen)
 
 ```bash
-python -m src.prepare_data          # bir kez: data/processed/ önbelleği (~2 dk, 1 GB)
+python -m src.prepare_data          # bir kez: data/processed/ temiz tensör deposu (~2 dk, 1 GB)
 python -m src.train                 # MAE eğitimi -> models/mae_ecg_checkpoint.pth
 python -m src.train --arch resnet1d # karşılaştırma modeli -> models/resnet1d_baseline.pth
 python -m src.evaluate --baseline models/resnet1d_baseline.pth   # stres testleri -> results/
@@ -37,11 +37,11 @@ Kullanıcının kendi EKG'si için. Gövde: `{"signal": 12×N mV, "fs": 100, "mi
 | Alan | Açıklama |
 |---|---|
 | `raw_signals` | 12×1000, mV, filtreli orijinal sinyal |
-| `reconstructed_signals` | 12×1000, mV. Sağlam kanallar orijinal, kopan kanallar MAE rekonstrüksiyonu |
+| `reconstructed_signals` | 12×1000, mV. Sağlam kanallar orijinal; kopan göğüs kanalları MAE rekonstrüksiyonu, kopan ekstremite kanalları Einthoven kısıtıyla hesaplanmış |
 | `diagnosis.predicted_class`, `diagnosis.confidence`, `diagnosis.is_mi` | Artık gerçek model çıktısı |
 | `dropped_lead_names`, `active_lead_count`, `lead_names` | |
 | `wall_damage_scores` | `{Anterior, Inferior, Lateral}`, 0–1. 3D kalp renklendirmesi için: P(MI) × P(duvar ∣ MI) |
-| `xai_metrics.most_affected_lead`, `xai_metrics.anatomical_region` | Teşhis başlığının en çok dikkat verdiği derivasyon |
+| `xai_metrics.most_affected_lead`, `xai_metrics.anatomical_region` | Spatial Attention katmanında en çok dikkat alan derivasyon (Md. 2.5) |
 | `mse_per_lead`, `anomaly_score` | z-score biriminde rekonstrüksiyon hatası. `anomaly_score` kopan kanalların ortalamasıdır |
 
 **Yeni alanlar:**
@@ -49,8 +49,11 @@ Kullanıcının kendi EKG'si için. Gövde: `{"signal": 12×N mV, "fs": 100, "mi
 | Alan | Açıklama |
 |---|---|
 | `mi_probability` | 0–1 |
+| `einthoven_completed_leads` | Einthoven bağıntılarıyla kesin hesaplanan kopan ekstremite derivasyonları (Risk 1 B planı) |
 | `diagnosis.affected_wall` | MI ise en olası duvar |
-| `lead_attention` | `{I: …, V6: …}`, toplamı 1, kopan kanallarda 0. XAI ısı haritası için |
+| `lead_attention` | `{I: …, V6: …}`, Spatial Attention katmanından derivasyon önemi; toplamı 1, kopan kanallarda 0. XAI ısı haritası için |
+| `spatial_attention` | 12×12 matris (sorgu × anahtar). Satır i: derivasyon i'nin hangi sağlam kanallardan beslendiği |
+| `reconstruction_sources` | Her kopan kanal için onu en çok temsil eden 3 sağlam kanal ve ağırlığı, örn. `{"V2": {"V3": 0.31, …}}` |
 | `click_to_explain.{Anterior,Inferior,Lateral}` | 3D duvara tıklanınca gösterilecek kart: `explanation` (hazır Türkçe metin), `damage_score`, `st_deviation_mm` (derivasyon başına), `max_st_deviation_mm`, `suspected_artery`, `missing_leads`, `decision_confidence`, `attention_share` |
 | `st_deviation_mm`, `st_reference_lead` | Tüm derivasyonlar için ST sapması (mm) |
 | `ground_truth` | `{label, mi_walls}`. Demo kaydının gerçek etiketi (yalnızca `sample-ecg`'de) |
@@ -68,25 +71,30 @@ Kullanıcının kendi EKG'si için. Gövde: `{"signal": 12×N mV, "fs": 100, "mi
 
 ## Rapor ↔ kod durumu (Zilan'ın iş paketleri)
 
-| Rapor maddesi | Durum | Dosya |
+Rapor sabittir; kod rapora birebir uyar.
+
+| Rapor maddesi | Kodda | Dosya |
 |---|---|---|
-| İP1: PTB-XL, MI (Anterior/Inferior/Lateral) ve Normal etiketleri | ✓ | `src/prepare_data.py` |
-| İP1: 0.5–45 Hz, 4. derece, çift yönlü Butterworth | ✓ | `src/preprocess.py` |
-| İP1: Z-score, [12, 1000] tensör, 100 Hz | ✓ derivasyon ve kayıt bazında | `src/preprocess.py` |
-| Md. 2.1: FFT/STFT bimodal | ✓ STFT dalı darboğaza ekleniyor | `src/model.py` (`STFTEncoder`) |
-| Md. 2.2: LeadDropout, k ∈ [1,4], X ⊙ M | ✓ ve "kritik" duvar kopması | `src/model.py` (`LeadDropout`) |
-| Md. 2.3.1: 1D-CNN + Spatial Attention + Spatio-Temporal Transformer | ✓ | `src/model.py` |
-| Md. 2.3.2: 1D Transpose Conv kod çözücü + IRC | ✓ | `src/model.py` |
-| Md. 2.3.3: GAP + Dense, MI ve kriz tipi | ✓ | `src/model.py` |
-| Md. 2.4: 0.4·MSE(maskeli) + 0.6·Focal | ✓ | `src/losses.py` |
-| Hedef 4: F1 > 0.88, RMSE < 0.15, R² > 0.80 | Ölçülüyor; sonuçlar eğitim bitince | `src/evaluate.py` |
-| Hipotez: 1D-ResNet'e göre FNR ≥ %25 azalma | Ölçülüyor | `src/evaluate.py --baseline` |
-| İP5: FastAPI, gerçek model çıktısı, Click-to-Explain verisi | ✓ backend | `src/main.py` |
-| Risk 2: ONNX, < 50 ms | Gerekirse; `inference_ms` ile izleniyor | |
+| İP1: PTB-XL, SCP-ECG etiket matrisleri | `Y.npy` (NORM, MI, STTC, CD, HYP, AMI, IMI, LMI, PMI) + `meta.csv` | `src/prepare_data.py` |
+| Md. 2.1: MI (Anterior/Inferior/Lateral) ve Normal, dengeli alt kümeler | Her bölümde tüm MI + aynı sayıda Normal (eğitim 4379/4379, doğrulama 540/540, test 550/550) | `src/prepare_data.py`, `src/dataset.py` |
+| İP1: 0.5–45 Hz, 4. derece, çift yönlü Butterworth | ✓ | `src/preprocessing.py` |
+| İP1: Z-score, [12, 1000] tensör, 100 Hz | ✓ derivasyon bazında | `src/preprocessing.py` |
+| İP1 başarı ölçütü: temizlenmiş tensör deposu + `preprocessing.py` | `data/processed/` + `src/preprocessing.py` | |
+| Md. 2.1: FFT/STFT bimodal | STFT dalı omurgaya ekleniyor | `src/model.py` (`STFTEncoder`) |
+| Md. 2.2: LeadDropout, DataLoader seviyesinde, batch başına k ∈ [1,4], M ∈ {0,1}¹², X_masked = X ⊙ M·1ᵀ | ✓ ayrıca "kritik" duvar kopması (Hedef 2) | `src/lead_dropout.py` |
+| Md. 2.3.1: 1D-CNN + Lead Fusing + Spatio-Temporal Transformer, Softmax(QKᵀ/√d_k)V | ✓ çok başlıklı uzamsal dikkat; anahtarlar sağlam kanallar | `src/model.py` |
+| Md. 2.3.2: simetrik 1D Transpose Conv kod çözücü + IRC | ✓ | `src/model.py` |
+| Md. 2.3.3: Global Average Pooling + Dense, MI ve kriz tipi | ✓ | `src/model.py` |
+| Md. 2.4: 0.4·MSE(yalnızca maskeli kanallar) + 0.6·Focal | ✓ | `src/losses.py` |
+| Md. 2.5: XAI, Spatial Attention ağırlıkları → 3D duvarlar | `lead_attention`, `spatial_attention`, `reconstruction_sources` | `src/model.py`, `src/main.py` |
+| Hedef 4: 1–4 kanal kopmasında F1 > 0.88, RMSE < 0.15, R² > 0.80 | Test setinde ölçülüyor | `src/evaluate.py` |
+| Risk 1 B planı: Einthoven üçgeni fizyolojik kısıtı | Kopan ekstremite derivasyonları (I, II, III, aVR, aVL, aVF) sağlam olanlardan kesin hesaplanır; saf MAE ve MAE + Einthoven metrikleri ayrı raporlanır | `src/einthoven.py` |
+| Hipotez: 1D-ResNet'e göre yanlış negatif ≥ %25 azalma, Pearson r | Ölçülüyor | `src/evaluate.py --baseline` |
+| İP3 başarı ölçütü: eğitilmiş `.pth` | `models/mae_ecg_checkpoint.pth` | `src/train.py` |
+| İP5: FastAPI, Click-to-Explain verisi | ✓ backend | `src/main.py` |
 
-### Rapor metninde düzeltilmesi önerilenler
+### Veri ve ölçüm notları
 
-- PTB-XL v1.0.3'te **21.799** kayıt var (raporda 21.837; bu sayı eski sürüme ait).
-- Ham PTB-XL'de **18.869** hasta var (raporda 18.885).
-- Lateral MI (LMI) test setinde yalnızca 20 kayıt. Lateral duvar sonuçları istatistiksel olarak zayıf kalacak.
-- RMSE < 0.15 hedefinin birimi belirtilmemiş. Kod hem z-score hem mV cinsinden raporluyor; z-score biriminde 0.15, R² ≈ 0.98'e karşılık gelir ve çok iddialıdır. mV olarak tanımlanması önerilir.
+- **Kayıt sayısı:** Rapordaki 21.837 kayıt (18.885 hasta), PTB-XL'in ilk sürümündeki sayıdır. PhysioNet v1.0.2'de yinelenen 38 kayıt çıkarılmıştır (`data/ptbxl/ptbxl_v102_changelog.txt`). Kullanılan v1.0.3 aynı kayıtların tekilleştirilmiş hâlidir: 21.799 kayıt, 18.869 hasta.
+- **RMSE:** `src/evaluate.py` hem z-score hem mV biriminde raporlar. R² ve Pearson r de yanında verilir.
+- **Lateral MI:** Test setinde yalnızca 20 kayıt var. Lateral duvar AUROC'u bu yüzden geniş güven aralıklı olacak.
