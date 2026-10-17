@@ -527,7 +527,7 @@ export default function HeartScene({
 
           const coronaryMat = () =>
             new THREE.MeshPhysicalMaterial({
-              color: srgb(0xa52a24),
+              color: srgb(0xd23a2f),
               roughness: 0.4,
               clearcoat: 0.55,
               clearcoatRoughness: 0.3,
