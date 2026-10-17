@@ -26,14 +26,15 @@ export const WALLS = {
   lateral: { label: 'Yan Duvar', leads: 'I, aVL, V5, V6', artery: 'LCx' },
 };
 
+// index.css'deki --wall-* ve --recon belirteçleriyle aynı (canvas CSS değişkeni okuyamaz)
 export const LEAD_COLORS = {
-  ant: '#4cc9f0',
-  inf: '#f6c453',
-  lat: '#7bd88f',
-  neu: '#9aa3b2',
+  ant: '#2563eb',
+  inf: '#d97706',
+  lat: '#059669',
+  neu: '#8b93a1',
 };
 
-export const RECONSTRUCTION_COLOR = '#ff6eb0';
+export const RECONSTRUCTION_COLOR = '#7c3aed';
 
 export const RECONSTRUCTION_METHODS = {
   einthoven: 'Einthoven/Goldberger',
@@ -43,8 +44,8 @@ export const RECONSTRUCTION_METHODS = {
 };
 
 export const SCENARIOS = [
-  { value: 'normal', label: 'Normal Sinüs Ritmi' },
-  { value: 'ant', label: 'Anterior MI (Ön Duvar)' },
-  { value: 'inf', label: 'Inferior MI (Alt Duvar)' },
-  { value: 'lat', label: 'Lateral MI (Yan Duvar)' },
+  { value: 'normal', label: 'Normal sinüs ritmi', short: 'Normal' },
+  { value: 'ant', label: 'Anterior MI', short: 'Anterior' },
+  { value: 'inf', label: 'Inferior MI', short: 'Inferior' },
+  { value: 'lat', label: 'Lateral MI', short: 'Lateral' },
 ];

@@ -1,12 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { api } from '../services/ecgApi.js';
 import { LEADS, LEAD_COLORS, RECONSTRUCTION_COLOR } from '../data/ecg.js';
+import Panel from './ui/Panel.jsx';
 
 const SAMPLE_RATE = 100;
 const WINDOW_SAMPLES = 1000;
 const CAPACITY = 4096;
 const PREFETCH = 100;
-const LABEL_WIDTH = 34;
+const LABEL_WIDTH = 44;
+// EKG kâğıdı: 25 mm/s → 10 s = 250 mm; genlik 10 mm/mV (satıra sığmazsa küçültülür)
+const PAPER_MM = (WINDOW_SAMPLES / SAMPLE_RATE) * 25;
+const PAPER = { bg: '#fffbfa', minor: '#f7dcdc', major: '#eeb4b4', ink: '#1d2127' };
 
 export default function ECGCanvas({
   disconnectedLeads,
@@ -49,6 +53,35 @@ export default function ECGCanvas({
     let animationFrame = 0;
     let stopped = false;
 
+    const grid = document.createElement('canvas');
+    let pxPerMm = 1;
+
+    // Izgara yalnızca boyut değişince çizilir, her karede kopyalanır
+    function drawGrid(pixelRatio) {
+      grid.width = canvas.width;
+      grid.height = canvas.height;
+      const g = grid.getContext('2d');
+      g.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      g.fillStyle = PAPER.bg;
+      g.fillRect(0, 0, width, height);
+      pxPerMm = (width - LABEL_WIDTH) / PAPER_MM;
+      for (const [step, color] of [[1, PAPER.minor], [5, PAPER.major]]) {
+        g.strokeStyle = color;
+        g.lineWidth = step === 5 ? 0.8 : 0.5;
+        g.beginPath();
+        for (let mm = 0; mm * pxPerMm <= width; mm += step) {
+          const x = width - mm * pxPerMm;
+          g.moveTo(x, 0);
+          g.lineTo(x, height);
+        }
+        for (let mm = 0; mm * pxPerMm <= height; mm += step) {
+          g.moveTo(0, mm * pxPerMm);
+          g.lineTo(width, mm * pxPerMm);
+        }
+        g.stroke();
+      }
+    }
+
     function resize() {
       const pixelRatio = window.devicePixelRatio || 1;
       width = container.clientWidth;
@@ -56,6 +89,7 @@ export default function ECGCanvas({
       canvas.width = Math.round(width * pixelRatio);
       canvas.height = Math.round(height * pixelRatio);
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      drawGrid(pixelRatio);
     }
 
     function prefetch() {
@@ -133,38 +167,33 @@ export default function ECGCanvas({
       position += ((now - lastFrame) / 1000) * SAMPLE_RATE;
       lastFrame = now;
       prefetch();
-      context.clearRect(0, 0, width, height);
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.drawImage(grid, 0, 0);
+      context.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
 
       const rowHeight = height / LEADS.length;
       const pixelsPerSample = (width - LABEL_WIDTH) / WINDOW_SAMPLES;
-      const scale = rowHeight * 0.42;
+      const scale = Math.min(10 * pxPerMm, rowHeight * 0.48);
       const newest = Math.min(Math.floor(position), available - 1);
-
-      context.lineWidth = 1;
-      context.strokeStyle = '#231b2e';
-      context.beginPath();
-      for (let row = 1; row < LEADS.length; row += 1) {
-        context.moveTo(0, row * rowHeight);
-        context.lineTo(width, row * rowHeight);
-      }
-      context.stroke();
-
-      context.font = '600 11px system-ui';
-      context.textBaseline = 'middle';
       const disconnected = new Set(latestProps.current.disconnectedLeads);
 
+      context.textBaseline = 'middle';
       for (let leadIndex = 0; leadIndex < LEADS.length; leadIndex += 1) {
         const lead = LEADS[leadIndex];
         const centerY = rowHeight * (leadIndex + 0.5);
         const isDisconnected = disconnected.has(leadIndex);
-        const color = LEAD_COLORS[lead.wall];
 
-        context.fillStyle = isDisconnected ? RECONSTRUCTION_COLOR : color;
-        context.fillText(lead.name, 8, centerY);
+        // Etiket: duvar rengi işareti + derivasyon adı
+        context.fillStyle = isDisconnected ? RECONSTRUCTION_COLOR : LEAD_COLORS[lead.wall];
+        context.fillRect(8, centerY - 5, 3, 10);
+        context.fillStyle = isDisconnected ? RECONSTRUCTION_COLOR : PAPER.ink;
+        context.font = '600 11px Inter, system-ui, sans-serif';
+        context.fillText(lead.name, 15, centerY);
 
+        context.lineJoin = 'round';
         if (!isDisconnected) {
-          context.strokeStyle = color;
-          context.lineWidth = 1.4;
+          context.strokeStyle = PAPER.ink;
+          context.lineWidth = 1.25;
           tracePath(samples, leadIndex, centerY, scale, pixelsPerSample, newest);
           continue;
         }
@@ -175,11 +204,13 @@ export default function ECGCanvas({
           context.setLineDash([5, 3]);
           tracePath(reconstructed, leadIndex, centerY, scale, pixelsPerSample, newest);
           context.setLineDash([]);
-          context.font = '10px system-ui';
-          context.fillText('rekonstrükte', width - 76, centerY - rowHeight * 0.32);
-          context.font = '600 11px system-ui';
+          context.font = '500 10px Inter, system-ui, sans-serif';
+          context.textAlign = 'right';
+          context.fillText('rekonstrükte', width - 8, centerY - rowHeight * 0.32);
+          context.textAlign = 'left';
         } else {
-          context.strokeStyle = '#ff4d6d';
+          context.strokeStyle = '#c8102e';
+          context.lineWidth = 1;
           context.setLineDash([4, 4]);
           context.beginPath();
           context.moveTo(LABEL_WIDTH, centerY);
@@ -212,22 +243,21 @@ export default function ECGCanvas({
   }, [onApiStatusChange, onFpsChange]);
 
   return (
-    <section className="flex h-[620px] flex-col overflow-hidden rounded-2xl border border-line bg-panel min-[1201px]:sticky min-[1201px]:top-4 min-[1201px]:self-start">
-      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-[11px] text-muted">
-        <span className="font-semibold uppercase tracking-wider text-accent">
-          12 Derivasyon · 10 s · 100 Hz
+    <Panel
+      actions={
+        <span className="flex items-center gap-1.5 text-xs text-muted">
+          <i className="inline-block w-5 border-t-2 border-dashed border-recon" />
+          Rekonstrükte
         </span>
-        <span className="flex items-center gap-1.5">
-          <i
-            className="inline-block h-0 w-5 border-t-2 border-dashed align-middle"
-            style={{ borderColor: RECONSTRUCTION_COLOR }}
-          />
-          Kopuk kanal → rekonstrükte sinyal
-        </span>
-      </div>
-      <div className="flex-1 overflow-hidden bg-ecg-background">
+      }
+      bodyClassName="p-0"
+      className="overflow-hidden"
+      meta={<span className="num">25 mm/s · 10 mm/mV · 100 Hz</span>}
+      title="12 derivasyonlu EKG"
+    >
+      <div className="h-[540px]">
         <canvas aria-label="12 derivasyonlu canlı EKG sinyalleri" className="block h-full w-full" ref={canvasRef} />
       </div>
-    </section>
+    </Panel>
   );
 }
