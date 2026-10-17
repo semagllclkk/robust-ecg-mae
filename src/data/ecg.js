@@ -20,34 +20,6 @@ export const LEAD_COLORS = {
   neu: '#9aa3b2',
 };
 
-export const REGION_INFO = {
-  ant: {
-    title: 'Anterior (Ön Duvar)',
-    description:
-      'V1, V2, V3, V4 derivasyonlarını temsil eder. Kesinti durumunda ön yüzdeki iskemik bulguların tespiti zorlaşır.',
-    leads: [6, 7, 8, 9],
-    path:
-      'M 50 20 C 35 5, 10 15, 10 35 C 10 50, 25 65, 50 95 L 60 85 C 45 65, 40 45, 50 20 Z',
-    fillClass: 'fill-ischemic-anterior',
-  },
-  inf: {
-    title: 'Inferior (Alt Duvar)',
-    description:
-      'II, III, aVF derivasyonlarını temsil eder. Bu bölgedeki elektrot kopmaları alt taban hasarının (Inferior MI) atlanmasına neden olabilir.',
-    leads: [1, 2, 5],
-    path: 'M 10 35 C 0 50, 15 75, 50 95 L 30 75 C 10 55, 10 40, 10 35 Z',
-    fillClass: 'fill-ischemic-inferior',
-  },
-  lat: {
-    title: 'Lateral (Yan Duvar)',
-    description:
-      'I, aVL, V5, V6 derivasyonlarını temsil eder. Model, sağlam kanallardaki Spatial Attention ile bu bölgeyi rekonstrükte eder.',
-    leads: [0, 4, 10, 11],
-    path: 'M 50 20 C 80 0, 100 30, 85 60 L 50 95 L 30 75 C 20 65, 30 40, 50 40 Z',
-    fillClass: 'fill-ischemic-lateral',
-  },
-};
-
 export const SCENARIOS = [
   { value: 'normal', label: 'Normal Sinüs Ritmi' },
   { value: 'ant', label: 'Anterior MI (Ön Duvar)' },
