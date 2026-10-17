@@ -61,6 +61,7 @@ vec3 tissuePerturb(vec3 surfPos, vec3 surfNorm, vec2 dHdxy, float faceDir) {
 `;
 
 function addTissueBump(material, strength) {
+  if (!strength) return material;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.tissueBump = { value: strength };
     shader.vertexShader = shader.vertexShader
@@ -79,7 +80,7 @@ function addTissueBump(material, strength) {
   return material;
 }
 
-// Nemli epikard: düşük parlaklıkta clearcoat + kas dokusunun kadifemsi saçılımı için sheen
+// Nemli epikard: düşük parlaklıkta clearcoat (sheen katmanı tümleşik GPU'da pahalı olduğundan yok)
 function tissueMaterial(opts = {}, bump = 0.012) {
   return addTissueBump(new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
@@ -88,9 +89,6 @@ function tissueMaterial(opts = {}, bump = 0.012) {
     metalness: 0.0,
     clearcoat: 0.32,
     clearcoatRoughness: 0.42,
-    sheen: 0.4,
-    sheenRoughness: 0.5,
-    sheenColor: new THREE.Color(0xd06a5c),
     envMapIntensity: 0.85,
     ...opts,
   }), bump);
@@ -186,7 +184,7 @@ export default function HeartScene({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.12;
     renderer.domElement.style.display = 'block';
@@ -300,6 +298,8 @@ export default function HeartScene({
       mesh.geometry.attributes.color.needsUpdate = true;
     }
 
+    let painted = false;
+
     function recolorAll(pulse, now) {
       if (!regionW || !parts.lv || !parts.septum) return;
 
@@ -309,6 +309,14 @@ export default function HeartScene({
       const manualLV = hl.regions;
       const level = hl.level * hl.strength;
       const hasManual = manualLV.length > 0 && level > 0.001;
+
+      // Vurgu yoksa taban renkler bir kez geri yüklenir; sonraki karelerde GPU'ya veri gönderilmez
+      if (!hasManual && !affectedWalls.length) {
+        if (!painted) return;
+        painted = false;
+      } else {
+        painted = true;
+      }
 
       // Pembe yanıp sönme (~1.4 Hz): sinyali eksik (kopuk derivasyonlu) duvar
       const blinkT = (Math.sin(now * 0.009) + 1) / 2;
@@ -460,12 +468,12 @@ export default function HeartScene({
 
           valves.forEach((m, i) => {
             paintGeometry(m.geometry, srgb(0xdccdb0), 0.07, 0.15, 40 + i);
-            m.material = tissueMaterial({ roughness: 0.55, clearcoat: 0.15 });
+            m.material = tissueMaterial({ roughness: 0.55, clearcoat: 0 }, 0);
           });
 
           papillary.forEach((m, i) => {
             paintGeometry(m.geometry, srgb(0x9c4b41), 0.1, 0.15, 60 + i);
-            m.material = tissueMaterial({ roughness: 0.5 });
+            m.material = tissueMaterial({ roughness: 0.5, clearcoat: 0 }, 0);
           });
 
           const mitralC = geoCentroid(nodes.mitral_valve.geometry);
@@ -526,11 +534,9 @@ export default function HeartScene({
           });
 
           const coronaryMat = () =>
-            new THREE.MeshPhysicalMaterial({
+            new THREE.MeshStandardMaterial({
               color: srgb(0xd23a2f),
-              roughness: 0.4,
-              clearcoat: 0.55,
-              clearcoatRoughness: 0.3,
+              roughness: 0.32,
               emissive: new THREE.Color(0, 0, 0),
               envMapIntensity: 1.1,
             });
@@ -583,16 +589,14 @@ export default function HeartScene({
 
           // Büyük Damarlar
           vesselSpecs().forEach((sp) => {
-            const g = buildTubeGeometry(sp.pts, sp.r, { segs: 110, radial: 30, capEnd: !!sp.capEnd });
+            const g = buildTubeGeometry(sp.pts, sp.r, { segs: 72, radial: 18, capEnd: !!sp.capEnd });
             paintGeometry(g, srgb(sp.hex), 0.07, 0.11, sp.id.length * 3.1);
             const m = new THREE.Mesh(
               g,
-              new THREE.MeshPhysicalMaterial({
+              new THREE.MeshStandardMaterial({
                 color: 0xffffff,
                 vertexColors: true,
-                roughness: 0.5,
-                clearcoat: 0.3,
-                clearcoatRoughness: 0.45,
+                roughness: 0.42,
                 envMapIntensity: 0.9,
               })
             );
@@ -741,8 +745,23 @@ export default function HeartScene({
     let curOpacity = 1;
     let lastAppliedOpacity = 1;
 
+    // Sahne ekranda değilse çizim döngüsü durdurulur
+    let onScreen = true;
+    const visibility = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      if (onScreen && !animationFrameId && !stopped) {
+        clock.getDelta();
+        animate();
+      }
+    });
+    visibility.observe(container);
+
     function animate() {
       if (stopped) return;
+      if (!onScreen) {
+        animationFrameId = null;
+        return;
+      }
       animationFrameId = requestAnimationFrame(animate);
 
       const dt = Math.min(clock.getDelta(), 0.1);
@@ -857,9 +876,21 @@ export default function HeartScene({
       stopped = true;
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
       observer.disconnect();
+      visibility.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
       controls.dispose();
+      // GPU belleğini boşalt (aksi hâlde her yeniden bağlanmada geometri/doku birikir)
+      scene.traverse((object) => {
+        object.geometry?.dispose();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+          if (!material) return;
+          Object.values(material).forEach((value) => value?.isTexture && value.dispose());
+          material.dispose();
+        });
+      });
+      scene.environment?.dispose();
       renderer.dispose();
       if (renderer.domElement && renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement);
