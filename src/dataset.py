@@ -29,6 +29,41 @@ class PTBXLECGDataset(Dataset):
             
         return signal
 
+class PTBXLProcessedDataset(Dataset):
+    """
+    `python -m src.prepare_data` ile üretilen önbellekten (data/processed) okuyan MI/Normal Dataset.
+
+    split : "train" | "val" | "test"  (strat_fold 1–8 / 9 / 10)
+    Döndürür: (sinyal (12, 1000) float32, etiket float32 skaler: 1 = MI, 0 = Normal)
+    Yalnızca label >= 0 olan kayıtlar alınır. X.npy bellek eşlemeli (mmap) açılır;
+    ~1 GB'lık dosya RAM'e tümüyle yüklenmez.
+    """
+    def __init__(self, split="train", processed_dir="data/processed", transform=None):
+        import os
+        import pandas as pd
+
+        meta = pd.read_csv(os.path.join(processed_dir, "meta.csv"), index_col="ecg_id")
+        mask = ((meta["split"] == split) & (meta["label"] >= 0)).to_numpy()
+
+        self.indices = np.flatnonzero(mask)
+        self.X = np.load(os.path.join(processed_dir, "X.npy"), mmap_mode="r")
+        self.meta = meta.iloc[self.indices]
+        self.labels = self.meta["label"].to_numpy(dtype=np.float32)
+        self.ecg_ids = self.meta.index.to_numpy()
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        signal = torch.from_numpy(np.array(self.X[self.indices[idx]], dtype=np.float32))
+        if self.transform:
+            signal = self.transform(signal)
+        return signal, torch.tensor(self.labels[idx])
+
+    def positive_fraction(self):
+        return float(self.labels.mean()) if len(self.labels) else 0.0
+
 def create_dummy_ptbxl_data(num_samples=100, num_leads=12, length=1000):
     """
     Test ve geliştirme amaçlı PTB-XL formatında sentetik EKG verisi üretir.
