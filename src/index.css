@@ -20,3 +20,11 @@
     font: inherit;
   }
 }
+
+@layer components {
+  /* 3D kalp sahnesi: klinik/atlas tarzı açık arka plan */
+  .heart-stage {
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 42%, #ffffff 0%, #eef2f7 45%, #d3dce7 100%);
+  }
+}

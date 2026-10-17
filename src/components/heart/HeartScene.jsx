@@ -12,23 +12,110 @@ import {
   coronaryPaths,
   densify,
   getVesselInfo,
+  lcxPath,
   paintGeometry,
   smoothstep,
   srgb,
   vesselSpecs,
 } from './heartLogic.js';
 
-function tissueMaterial(opts = {}) {
-  return new THREE.MeshPhysicalMaterial({
+// Rapor 2.5 duvarları → sol ventrikül bölge ağırlıkları (Anterior/Septal: V1–V4)
+const WALL_TO_LV = {
+  anterior: ['anterior', 'septal'],
+  inferior: ['inferior'],
+  lateral: ['lateral'],
+};
+const LV_TO_WALL = { anterior: 'anterior', septal: 'anterior', inferior: 'inferior', lateral: 'lateral' };
+const CORONARY_WALL = { lad: 'anterior', rca: 'inferior', lcx: 'lateral' };
+
+const expandWalls = (walls) => walls.flatMap((wall) => WALL_TO_LV[wall] ?? []);
+
+// Modelde UV olmadığından doku kabartması nesne uzayında prosedürel gürültüyle üretilir
+const TISSUE_BUMP_GLSL = `
+varying vec3 vTissuePos;
+float tissueHash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float tissueNoise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(tissueHash(i), tissueHash(i + vec3(1, 0, 0)), f.x),
+        mix(tissueHash(i + vec3(0, 1, 0)), tissueHash(i + vec3(1, 1, 0)), f.x), f.y),
+    mix(mix(tissueHash(i + vec3(0, 0, 1)), tissueHash(i + vec3(1, 0, 1)), f.x),
+        mix(tissueHash(i + vec3(0, 1, 1)), tissueHash(i + vec3(1, 1, 1)), f.x), f.y),
+    f.z);
+}
+vec3 tissuePerturb(vec3 surfPos, vec3 surfNorm, vec2 dHdxy, float faceDir) {
+  vec3 sigmaX = dFdx(surfPos);
+  vec3 sigmaY = dFdy(surfPos);
+  vec3 r1 = cross(sigmaY, surfNorm);
+  vec3 r2 = cross(surfNorm, sigmaX);
+  float det = dot(sigmaX, r1) * faceDir;
+  vec3 grad = sign(det) * (dHdxy.x * r1 + dHdxy.y * r2);
+  return normalize(abs(det) * surfNorm - grad);
+}
+`;
+
+function addTissueBump(material, strength) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.tissueBump = { value: strength };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTissuePos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvTissuePos = position;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nuniform float tissueBump;\n${TISSUE_BUMP_GLSL}`)
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        float tissueH = tissueNoise(vTissuePos * 0.32) * 0.6 + tissueNoise(vTissuePos * 0.9) * 0.4;
+        normal = tissuePerturb(-vViewPosition, normal, vec2(dFdx(tissueH), dFdy(tissueH)) * tissueBump, faceDirection);`,
+      );
+  };
+  material.customProgramCacheKey = () => `tissue-bump-${strength}`;
+  return material;
+}
+
+// Nemli epikard: düşük parlaklıkta clearcoat + kas dokusunun kadifemsi saçılımı için sheen
+function tissueMaterial(opts = {}, bump = 0.012) {
+  return addTissueBump(new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     vertexColors: true,
-    roughness: 0.42,
+    roughness: 0.58,
     metalness: 0.0,
-    clearcoat: 0.45,
-    clearcoatRoughness: 0.3,
-    envMapIntensity: 1.0,
+    clearcoat: 0.32,
+    clearcoatRoughness: 0.42,
+    sheen: 0.4,
+    sheenRoughness: 0.5,
+    sheenColor: new THREE.Color(0xd06a5c),
+    envMapIntensity: 0.85,
     ...opts,
-  });
+  }), bump);
+}
+
+function contactShadow(box) {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, 'rgba(40,48,64,0.42)');
+  g.addColorStop(0.55, 'rgba(40,48,64,0.14)');
+  g.addColorStop(1, 'rgba(40,48,64,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const width = (box.max.x - box.min.x) * 1.3;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, width * 0.6),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set((box.min.x + box.max.x) / 2, box.min.y - 0.4, (box.min.z + box.max.z) / 2);
+  mesh.renderOrder = -1;
+  return mesh;
 }
 
 function geoCentroid(geo) {
@@ -52,6 +139,7 @@ export default function HeartScene({
   beatActive = true,
   cameraView = 'anterior',
   highlightedRegion = null,
+  highlightStrength = 1,
   affectedRegions = [],
   layers = { vessels: true, coronary: true, atria: true, ventricles: true, inner: true },
   wallOpacity = 1.0,
@@ -74,6 +162,7 @@ export default function HeartScene({
     beatActive,
     cameraView,
     highlightedRegion,
+    highlightStrength,
     affectedRegions,
     layers,
     wallOpacity,
@@ -99,7 +188,7 @@ export default function HeartScene({
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.08;
+    renderer.toneMappingExposure = 1.12;
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
@@ -116,8 +205,8 @@ export default function HeartScene({
     controls.target.copy(target);
 
     // Aydınlatma
-    camera.add(new THREE.HemisphereLight(0xbfd4ff, 0x3a1612, 0.5));
-    const keyLight = new THREE.DirectionalLight(0xfff1e2, 1.8);
+    camera.add(new THREE.HemisphereLight(0xf2f6ff, 0x6b3a32, 0.85));
+    const keyLight = new THREE.DirectionalLight(0xfff4ea, 2.1);
     keyLight.position.set(8, 14, 12);
     camera.add(keyLight);
     const fillLight = new THREE.DirectionalLight(0x9fb8ff, 0.6);
@@ -132,7 +221,7 @@ export default function HeartScene({
     envScene.add(
       new THREE.Mesh(
         new THREE.SphereGeometry(50, 32, 16),
-        new THREE.MeshBasicMaterial({ color: 0x151a24, side: THREE.BackSide })
+        new THREE.MeshBasicMaterial({ color: 0x8e99a8, side: THREE.BackSide })
       )
     );
     const createPanel = (w, h, hex, k, p) => {
@@ -165,175 +254,112 @@ export default function HeartScene({
     let baseCol = {};
     let coronaryMeshes = {};
 
-    const hl = { region: null, level: 0, target: 0 };
+    const hl = { walls: [], regions: [], level: 0, target: 0, strength: 1 };
     const heatOut = [0, 0, 0];
 
     function setHeat(w, pulse, out) {
       const a = smoothstep(0.0, 0.55, w);
       const k = smoothstep(0.25, 1.0, w);
       const g = 0.85 + 0.3 * pulse;
-      out[0] = (1.45 + (1.3 - 1.45) * k) * g;
-      out[1] = (1.0 + (0.07 - 1.0) * k) * g;
-      out[2] = (0.2 + (0.05 - 0.2) * k) * g;
+      // Rapor 2.5: hasarlı segment kırmızı gradyanla (koyu → parlak kırmızı) vurgulanır
+      out[0] = (0.5 + (0.95 - 0.5) * k) * g;
+      out[1] = (0.035 + (0.012 - 0.035) * k) * g;
+      out[2] = (0.035 + (0.018 - 0.035) * k) * g;
       return a;
     }
 
+    function blend(arr, target, alpha) {
+      arr[0] += (target[0] - arr[0]) * alpha;
+      arr[1] += (target[1] - arr[1]) * alpha;
+      arr[2] += (target[2] - arr[2]) * alpha;
+    }
+
+    const px = [0, 0, 0];
+    const blink = [0, 0, 0];
+
+    // Vertex renkleri: taban → kopuk kanal yanıp sönmesi → model hasar vurgusu (her zaman üstte)
+    function paintMesh(mesh, base, manualW, affectedW, pulse, blinkAlpha) {
+      const col = mesh.geometry.attributes.color.array;
+      const n = mesh.geometry.attributes.position.count;
+      for (let i = 0; i < n; i++) {
+        const i3 = i * 3;
+        px[0] = base[i3];
+        px[1] = base[i3 + 1];
+        px[2] = base[i3 + 2];
+        const wA = affectedW ? affectedW(i) : 0;
+        if (wA >= 0.01) blend(px, blink, smoothstep(0.01, 0.85, wA) * blinkAlpha);
+        const wM = manualW ? manualW(i) : 0;
+        if (wM >= 0.004) {
+          const aM = setHeat(Math.min(1, wM), pulse, heatOut) * Math.min(1, wM * 1.15);
+          blend(px, heatOut, aM);
+        }
+        col[i3] = px[0];
+        col[i3 + 1] = px[1];
+        col[i3 + 2] = px[2];
+      }
+      mesh.geometry.attributes.color.needsUpdate = true;
+    }
+
     function recolorAll(pulse, now) {
-      if (!regionW || !parts.lv || !parts.septum || !parts.rv) return;
+      if (!regionW || !parts.lv || !parts.septum) return;
 
       const currentProps = propsRef.current;
-      const affected = currentProps.affectedRegions || [];
-      const manualRegion = hl.region;
-      const manualLevel = hl.level;
+      const affectedWalls = currentProps.affectedRegions || [];
+      const affectedLV = expandWalls(affectedWalls);
+      const manualLV = hl.regions;
+      const level = hl.level * hl.strength;
+      const hasManual = manualLV.length > 0 && level > 0.001;
 
-      const hasAffected = affected.length > 0;
-      const hasManual = manualRegion && manualLevel > 0.001;
+      // Pembe yanıp sönme (~1.4 Hz): sinyali eksik (kopuk derivasyonlu) duvar
+      const blinkT = (Math.sin(now * 0.009) + 1) / 2;
+      blink[0] = 1.3 + (1.7 - 1.3) * blinkT;
+      blink[1] = 0.45 + (1.05 - 0.45) * blinkT;
+      blink[2] = 0.75 + (1.25 - 0.75) * blinkT;
+      const blinkAlpha = 0.3 + 0.3 * blinkT;
 
-      // Pembe-beyaz yanıp sönme hesabı (~1.8 Hz ritmik yanıp sönme)
-      const blinkT = (Math.sin(now * 0.009) + 1) / 2; // 0 (pembe) ile 1 (beyaz)
-      const blinkR = 1.35 + (1.90 - 1.35) * blinkT;
-      const blinkG = 0.35 + (1.90 - 0.35) * blinkT;
-      const blinkB = 0.65 + (1.90 - 0.65) * blinkT;
-      const blinkAlpha = 0.65 + 0.35 * Math.sin(now * 0.009);
-
-      // LV Vertex Renklendirme
-      const lvCol = parts.lv.geometry.attributes.color.array;
-      const lvBase = baseCol.lv;
-      const nLV = parts.lv.geometry.attributes.position.count;
-
-      for (let i = 0; i < nLV; i++) {
-        const i3 = i * 3;
-        let r = lvBase[i3];
-        let g = lvBase[i3 + 1];
-        let b = lvBase[i3 + 2];
-
-        // 1) Manuel XAI vurgusu (sarı-kırmızı ısı haritası)
-        if (hasManual && regionW.lv[manualRegion]) {
-          const wM = regionW.lv[manualRegion][i] * manualLevel;
-          if (wM >= 0.004) {
-            const aM = setHeat(Math.min(1, wM), pulse, heatOut) * Math.min(1, wM * 1.15);
-            r += (heatOut[0] - r) * aM;
-            g += (heatOut[1] - g) * aM;
-            b += (heatOut[2] - b) * aM;
-          }
+      const maxOver = (list, field) => (i) => {
+        let w = 0;
+        for (let j = 0; j < list.length; j++) {
+          const arr = field[list[j]];
+          if (arr && arr[i] > w) w = arr[i];
         }
+        return w;
+      };
 
-        // 2) Kopan kanallara bağlı pembe-beyaz yanıp sönme
-        if (hasAffected) {
-          let maxAffW = 0;
-          for (let j = 0; j < affected.length; j++) {
-            const affReg = affected[j];
-            if (regionW.lv[affReg]) {
-              const w = regionW.lv[affReg][i];
-              if (w > maxAffW) maxAffW = w;
-            }
-          }
-          if (maxAffW >= 0.01) {
-            const aAff = smoothstep(0.01, 0.85, maxAffW) * blinkAlpha;
-            r += (blinkR - r) * aAff;
-            g += (blinkG - g) * aAff;
-            b += (blinkB - b) * aAff;
-          }
-        }
+      const manualLVWeight = maxOver(manualLV, regionW.lv);
+      paintMesh(
+        parts.lv,
+        baseCol.lv,
+        hasManual ? (i) => manualLVWeight(i) * level : null,
+        affectedLV.length ? maxOver(affectedLV, regionW.lv) : null,
+        pulse,
+        blinkAlpha,
+      );
 
-        lvCol[i3] = r;
-        lvCol[i3 + 1] = g;
-        lvCol[i3 + 2] = b;
-      }
-      parts.lv.geometry.attributes.color.needsUpdate = true;
+      const sepMan = hasManual && manualLV.includes('septal');
+      const sepAff = affectedLV.includes('septal');
+      paintMesh(
+        parts.septum,
+        baseCol.septum,
+        sepMan ? (i) => regionW.septumAll[i] * level : null,
+        sepAff ? () => 0.85 : null,
+        pulse,
+        blinkAlpha,
+      );
 
-      // Septum Vertex Renklendirme
-      const sepCol = parts.septum.geometry.attributes.color.array;
-      const sepBase = baseCol.septum;
-      const nSep = parts.septum.geometry.attributes.position.count;
-      const sepAff = affected.includes('septal');
-      const sepMan = manualRegion === 'septal' && hasManual;
-
-      for (let i = 0; i < nSep; i++) {
-        const i3 = i * 3;
-        let r = sepBase[i3];
-        let g = sepBase[i3 + 1];
-        let b = sepBase[i3 + 2];
-
-        if (sepMan) {
-          const wM = regionW.septumAll[i] * manualLevel;
-          const aM = setHeat(Math.min(1, wM), pulse, heatOut) * Math.min(1, wM * 1.15);
-          r += (heatOut[0] - r) * aM;
-          g += (heatOut[1] - g) * aM;
-          b += (heatOut[2] - b) * aM;
-        }
-
-        if (sepAff) {
-          const aAff = 0.85 * blinkAlpha;
-          r += (blinkR - r) * aAff;
-          g += (blinkG - g) * aAff;
-          b += (blinkB - b) * aAff;
-        }
-
-        sepCol[i3] = r;
-        sepCol[i3 + 1] = g;
-        sepCol[i3 + 2] = b;
-      }
-      parts.septum.geometry.attributes.color.needsUpdate = true;
-
-      // RV Vertex Renklendirme
-      const rvCol = parts.rv.geometry.attributes.color.array;
-      const rvBase = baseCol.rv;
-      const nRV = parts.rv.geometry.attributes.position.count;
-      const rvAff = affected.includes('septal');
-      const rvMan = manualRegion === 'septal' && hasManual;
-
-      for (let i = 0; i < nRV; i++) {
-        const i3 = i * 3;
-        let r = rvBase[i3];
-        let g = rvBase[i3 + 1];
-        let b = rvBase[i3 + 2];
-
-        if (rvMan) {
-          const wM = regionW.rvSoft[i] * manualLevel;
-          const aM = setHeat(Math.min(1, wM), pulse, heatOut) * Math.min(1, wM * 1.15);
-          r += (heatOut[0] - r) * aM;
-          g += (heatOut[1] - g) * aM;
-          b += (heatOut[2] - b) * aM;
-        }
-
-        if (rvAff) {
-          const aAff = regionW.rvSoft[i] * blinkAlpha;
-          r += (blinkR - r) * aAff;
-          g += (blinkG - g) * aAff;
-          b += (blinkB - b) * aAff;
-        }
-
-        rvCol[i3] = r;
-        rvCol[i3 + 1] = g;
-        rvCol[i3 + 2] = b;
-      }
-      parts.rv.geometry.attributes.color.needsUpdate = true;
-
-      // Koroner Damar Parıltısı (Emissive Glow)
-      const isLadAff = affected.includes('anterior') || affected.includes('septal');
-      const isLadMan = manualRegion === 'anterior' || manualRegion === 'septal';
-      if (coronaryMeshes.lad && coronaryMeshes.lad.material) {
-        if (isLadAff) {
-          coronaryMeshes.lad.material.emissive.setRGB(blinkR * 0.7 * blinkAlpha, blinkG * 0.7 * blinkAlpha, blinkB * 0.7 * blinkAlpha);
-        } else if (isLadMan && hasManual) {
-          coronaryMeshes.lad.material.emissive.setRGB(0.9 * manualLevel, 0.28 * manualLevel, 0.04 * manualLevel);
+      // Koroner arter parıltısı: duvarı besleyen arter vurgulanır
+      Object.entries(coronaryMeshes).forEach(([key, mesh]) => {
+        const wall = CORONARY_WALL[key];
+        const emissive = mesh.material.emissive;
+        if (affectedWalls.includes(wall)) {
+          const k = 0.7 * blinkAlpha;
+          emissive.setRGB(blink[0] * k, blink[1] * k, blink[2] * k);
+        } else if (hasManual && hl.walls.includes(wall)) {
+          emissive.setRGB(0.9 * level, 0.12 * level, 0.04 * level);
         } else {
-          coronaryMeshes.lad.material.emissive.setRGB(0, 0, 0);
+          emissive.setRGB(0, 0, 0);
         }
-      }
-
-      const isRcaAff = affected.includes('inferior');
-      const isRcaMan = manualRegion === 'inferior';
-      if (coronaryMeshes.rca && coronaryMeshes.rca.material) {
-        if (isRcaAff) {
-          coronaryMeshes.rca.material.emissive.setRGB(blinkR * 0.7 * blinkAlpha, blinkG * 0.7 * blinkAlpha, blinkB * 0.7 * blinkAlpha);
-        } else if (isRcaMan && hasManual) {
-          coronaryMeshes.rca.material.emissive.setRGB(0.9 * manualLevel, 0.28 * manualLevel, 0.04 * manualLevel);
-        } else {
-          coronaryMeshes.rca.material.emissive.setRGB(0, 0, 0);
-        }
-      }
+      });
     }
 
     // Kamera slerp / tween
@@ -417,7 +443,7 @@ export default function HeartScene({
             m.name = 'papillary';
           });
 
-          const baseColors = { lv: 0xa13a34, rv: 0xa9433b, septum: 0x8e302b, ra: 0x8d3b47, la: 0x853a45 };
+          const baseColors = { lv: 0x9e352d, rv: 0xa63d33, septum: 0x8f3029, ra: 0x96404a, la: 0x8f3d46 };
           const colors = {};
           const mats = {
             lv: tissueMaterial(),
@@ -428,7 +454,7 @@ export default function HeartScene({
           };
 
           ['lv', 'rv', 'septum', 'ra', 'la'].forEach((k, i) => {
-            colors[k] = paintGeometry(parts[k].geometry, srgb(baseColors[k]), 0.11, 0.085, i * 17.3);
+            colors[k] = paintGeometry(parts[k].geometry, srgb(baseColors[k]), 0.16, 0.085, i * 17.3);
             parts[k].material = mats[k];
           });
 
@@ -492,16 +518,19 @@ export default function HeartScene({
             m.material.side = THREE.DoubleSide;
           });
           const cor = coronaryPaths(wallMeshes);
+          // LV Bölgeleri (17 segment / EKG türetimi)
+          const reg = computeLVRegions(lv.geometry, sep.geometry, mitralC, aorticC, 38);
+          cor.lcx = lcxPath(lv, reg, cor.lad[0]);
           wallMeshes.forEach((m) => {
             m.material.side = THREE.FrontSide;
           });
 
           const coronaryMat = () =>
             new THREE.MeshPhysicalMaterial({
-              color: srgb(0x8f1c1c),
-              roughness: 0.34,
-              clearcoat: 0.7,
-              clearcoatRoughness: 0.25,
+              color: srgb(0xa52a24),
+              roughness: 0.4,
+              clearcoat: 0.55,
+              clearcoatRoughness: 0.3,
               emissive: new THREE.Color(0, 0, 0),
               envMapIntensity: 1.1,
             });
@@ -528,16 +557,27 @@ export default function HeartScene({
             beatItems.push({ obj: m, kind: 'vent', c: cVent });
           }
 
-          // Epikardiyal Yağ
+          if (cor.lcx.length > 3) {
+            const g = buildTubeGeometry(cor.lcx, (t) => 1.9 - 0.7 * t, { segs: 110, radial: 14, capEnd: true });
+            const m = new THREE.Mesh(g, coronaryMat());
+            m.name = 'lcx';
+            coronaryMeshes.lcx = m;
+            gLV.add(m);
+            sceneLayers.coronary.push(m);
+            pickables.push(m);
+            beatItems.push({ obj: m, kind: 'vent', c: cVent });
+          }
+
+          // Epikardiyal Yağ (koroner oluklar boyunca)
           const fatLine = [];
-          ['lad', 'rca'].forEach((k) => {
+          ['lad', 'rca', 'lcx'].forEach((k) => {
             if (cor[k] && cor[k].length > 1) fatLine.push(...densify(cor[k], 2.0));
           });
           ['lv', 'rv', 'ra', 'la'].forEach((k, i) => {
-            addEpicardialFat(parts[k].geometry, colors[k], fatLine, srgb(0xd9b25f), 9.0, 11 + i * 5);
+            addEpicardialFat(parts[k].geometry, colors[k], fatLine, srgb(0xe3c47e), 10.0, 11 + i * 5);
           });
 
-          ['lv', 'rv', 'septum'].forEach((k) => {
+          ['lv', 'septum'].forEach((k) => {
             baseCol[k] = new Float32Array(colors[k]);
           });
 
@@ -570,18 +610,19 @@ export default function HeartScene({
             });
           });
 
-          // LV Bölgeleri (17 segment / EKG türetimi)
-          const reg = computeLVRegions(lv.geometry, sep.geometry, mitralC, aorticC, 38);
           regionW = {
             lv: reg.weights,
             septumAll: new Float32Array(sep.geometry.attributes.position.count).fill(0.95),
-            rvSoft: new Float32Array(rv.geometry.attributes.position.count).fill(0.5),
           };
 
           // Boyutlandırma ve merkezleme
           root.scale.setScalar(0.1);
           root.position.copy(heartCenter).multiplyScalar(-0.1);
           root.updateMatrixWorld(true);
+
+          // Yumuşak temas gölgesi (açık arka planda modeli zemine oturtur)
+          const heartBox = new THREE.Box3().setFromObject(root);
+          scene.add(contactShadow(heartBox));
 
           internalRef.current.ready = true;
           internalRef.current.layersMap = sceneLayers;
@@ -639,10 +680,7 @@ export default function HeartScene({
         const vId = nm.slice(7);
         const info = getVesselInfo(vId);
         if (propsRef.current.onSelectInfo) {
-          propsRef.current.onSelectInfo({
-            ...info,
-            extra: 'Görselleştirme amaçlı prosedürel büyük damar.',
-          });
+          propsRef.current.onSelectInfo(info);
         }
         return;
       }
@@ -660,15 +698,14 @@ export default function HeartScene({
           }
         });
         const r = REGION_INFO[best] || REGION_INFO.anterior;
-        const baseI = INFO.lv;
         if (propsRef.current.onSelectInfo) {
           propsRef.current.onSelectInfo({
-            title: `${baseI.title} • ${r.ad}`,
-            category: baseI.category,
-            desc: baseI.desc,
+            title: `${INFO.lv.title} · ${r.ad}`,
+            category: INFO.lv.category,
+            desc: r.desc,
             leads: r.ekg,
             artery: r.art,
-            extra: `${r.ad} — İlişkili EKG: ${r.ekg} (${r.art})`,
+            wall: LV_TO_WALL[best],
           });
         }
         return;
@@ -757,10 +794,14 @@ export default function HeartScene({
         });
       }
 
-      // XAI ve Kopan Sinyal Vurgulama
+      // XAI vurgusu (model tahmini veya kullanıcı seçimi) ve kopuk kanal yanıp sönmesi
       const activeHighlight = currentProps.highlightedRegion;
-      const affectedList = currentProps.affectedRegions || [];
-      hl.region = activeHighlight;
+      if (activeHighlight) {
+        // Söndürme sırasında son bölge korunur ki vurgu yumuşakça kaybolsun
+        hl.walls = [activeHighlight];
+        hl.regions = expandWalls(hl.walls);
+      }
+      hl.strength = currentProps.highlightStrength ?? 1;
       hl.target = activeHighlight ? 1 : 0;
       hl.level += (hl.target - hl.level) * Math.min(1, dt * 6);
       if (Math.abs(hl.target - hl.level) < 0.003) hl.level = hl.target;
@@ -769,10 +810,7 @@ export default function HeartScene({
       const pulseVal = sysV * 0.8 + 0.2 * Math.sin(now / 380);
       recolorAll(pulseVal, now);
 
-      // Saydamlık (Septal vurguda veya kopuklukta iç yapıyı görebilmek için otomatik şeffaflaşma)
-      const userOpacity = currentProps.wallOpacity ?? 1.0;
-      const isSeptalActive = activeHighlight === 'septal' || affectedList.includes('septal');
-      const wantOpacity = Math.min(userOpacity, isSeptalActive ? 0.35 : 1.0);
+      const wantOpacity = currentProps.wallOpacity ?? 1.0;
       curOpacity += (wantOpacity - curOpacity) * Math.min(1, dt * 6);
 
       if (Math.abs(curOpacity - lastAppliedOpacity) > 0.002) {

@@ -174,7 +174,7 @@ export function vesselSpecs() {
     id: 'aorta',
     owner: 'lv',
     kind: 'arter',
-    hex: 0xb3463c,
+    hex: 0xd9a497,
     pts: [
       V3(8.9, 497, 28), V3(9, 509, 28), V3(6, 525, 27), V3(2, 542, 24),
       V3(3, 555, 17), V3(10, 564, 5), V3(22, 564, -8), V3(34, 556, -22),
@@ -188,7 +188,7 @@ export function vesselSpecs() {
     id: 'brakiyosefalik',
     owner: 'lv',
     kind: 'arter',
-    hex: 0xb3463c,
+    hex: 0xd9a497,
     pts: [V3(6, 556, 15), V3(5, 570, 15), V3(2, 590, 14), V3(-2, 608, 13)],
     r: (t) => 5.6 - 1.2 * t,
     capEnd: true,
@@ -198,7 +198,7 @@ export function vesselSpecs() {
     id: 'sol-karotis',
     owner: 'lv',
     kind: 'arter',
-    hex: 0xb3463c,
+    hex: 0xd9a497,
     pts: [V3(14, 559, 3), V3(15, 575, 1), V3(16, 594, 0), V3(16, 610, 0)],
     r: (t) => 3.7 - 0.6 * t,
     capEnd: true,
@@ -208,7 +208,7 @@ export function vesselSpecs() {
     id: 'sol-subklavyen',
     owner: 'lv',
     kind: 'arter',
-    hex: 0xb3463c,
+    hex: 0xd9a497,
     pts: [V3(22, 558, -2), V3(28, 574, -5), V3(38, 590, -8), V3(48, 602, -10)],
     r: (t) => 4.8 - 0.8 * t,
     capEnd: true,
@@ -218,7 +218,7 @@ export function vesselSpecs() {
     id: 'pulmoner-govde',
     owner: 'rv',
     kind: 'pa',
-    hex: 0x7b86b4,
+    hex: 0xc99189,
     pts: [V3(18, 509, 44), V3(19, 523, 41), V3(20, 537, 36), V3(22, 549, 29)],
     r: (t) => 12.8 - 1.6 * t,
   });
@@ -227,7 +227,7 @@ export function vesselSpecs() {
     id: 'sag-pulmoner-arter',
     owner: 'rv',
     kind: 'pa',
-    hex: 0x7b86b4,
+    hex: 0xc99189,
     pts: [V3(22, 549, 29), V3(17, 548, 14), V3(8, 547, 0), V3(-6, 547, -4), V3(-20, 546, -2), V3(-32, 544, 2)],
     r: (t) => 9 - 1.8 * t,
     capEnd: true,
@@ -237,7 +237,7 @@ export function vesselSpecs() {
     id: 'sol-pulmoner-arter',
     owner: 'rv',
     kind: 'pa',
-    hex: 0x7b86b4,
+    hex: 0xc99189,
     pts: [V3(22, 549, 29), V3(32, 550, 22), V3(44, 547, 14), V3(55, 541, 6)],
     r: (t) => 8.6 - 1.6 * t,
     capEnd: true,
@@ -247,7 +247,7 @@ export function vesselSpecs() {
     id: 'vena-kava-superior',
     owner: 'ra',
     kind: 'ven',
-    hex: 0x66719f,
+    hex: 0x7d4a5e,
     pts: [V3(-22, 503, 22), V3(-22, 520, 21), V3(-23, 545, 19), V3(-25, 578, 15)],
     r: (t) => 9.0 - 0.6 * t,
     capEnd: true,
@@ -257,7 +257,7 @@ export function vesselSpecs() {
     id: 'vena-kava-inferior',
     owner: 'ra',
     kind: 'ven',
-    hex: 0x66719f,
+    hex: 0x7d4a5e,
     pts: [V3(-22, 451, 12), V3(-22, 447, 0), V3(-22, 438, -14), V3(-22, 426, -26), V3(-22, 414, -34)],
     r: (t) => 10.5 - 0.5 * t,
     capEnd: true,
@@ -265,27 +265,27 @@ export function vesselSpecs() {
 
   const pvR = (t) => 6.6 - 0.8 * t;
   S.push({
-    id: 'sol-pulmoner-ven', owner: 'la', kind: 'pv', hex: 0xa6525b,
+    id: 'sol-pulmoner-ven', owner: 'la', kind: 'pv', hex: 0x9a5560,
     pts: [V3(28, 494, -4), V3(36, 494, -14), V3(44, 494, -23)], r: pvR,
   });
   S.push({
-    id: 'sol-ust-pv', owner: 'la', kind: 'pv', hex: 0xa6525b,
+    id: 'sol-ust-pv', owner: 'la', kind: 'pv', hex: 0x9a5560,
     pts: [V3(44, 494, -23), V3(52, 502, -30), V3(60, 508, -35)], r: (t) => 4.8 - 0.6 * t, capEnd: true,
   });
   S.push({
-    id: 'sol-alt-pv', owner: 'la', kind: 'pv', hex: 0xa6525b,
+    id: 'sol-alt-pv', owner: 'la', kind: 'pv', hex: 0x9a5560,
     pts: [V3(44, 494, -23), V3(52, 486, -30), V3(60, 480, -35)], r: (t) => 4.8 - 0.6 * t, capEnd: true,
   });
   S.push({
-    id: 'sag-pulmoner-ven', owner: 'la', kind: 'pv', hex: 0xa6525b,
+    id: 'sag-pulmoner-ven', owner: 'la', kind: 'pv', hex: 0x9a5560,
     pts: [V3(-18, 493, -5), V3(-27, 493, -13), V3(-36, 493, -22)], r: pvR,
   });
   S.push({
-    id: 'sag-ust-pv', owner: 'la', kind: 'pv', hex: 0xa6525b,
+    id: 'sag-ust-pv', owner: 'la', kind: 'pv', hex: 0x9a5560,
     pts: [V3(-36, 493, -22), V3(-45, 501, -28), V3(-53, 507, -32)], r: (t) => 4.8 - 0.6 * t, capEnd: true,
   });
   S.push({
-    id: 'sag-alt-pv', owner: 'la', kind: 'pv', hex: 0xa6525b,
+    id: 'sag-alt-pv', owner: 'la', kind: 'pv', hex: 0x9a5560,
     pts: [V3(-36, 493, -22), V3(-45, 485, -28), V3(-53, 479, -32)], r: (t) => 4.8 - 0.6 * t, capEnd: true,
   });
 
@@ -387,33 +387,57 @@ export function computeLVRegions(lvGeo, septumGeo, mitralC, aorticC, sigmaDeg = 
       W[k][i] = smoothstep(0.18, 0.9, g);
     }
   }
-  return { weights: W, angles: ang, axis: a, apex, base, centroid: c, septalCentroid: sC };
+  return { weights: W, angles: ang, axis: a, apex, base, centroid: c, septalCentroid: sC, s, e2 };
+}
+
+/* ---------- LCx: sol atriyoventriküler oluk boyunca, ön duvardan yan/arka duvara ---------- */
+export function lcxPath(lvMesh, reg, origin) {
+  const { angles, axis, apex, base, s, e2 } = reg;
+  const length = apex.distanceTo(base);
+  const ringCenter = base.clone().add(axis.clone().multiplyScalar(0.16 * length));
+  const sgn = Math.sign(angles.anterior) || 1;
+  const rc = new THREE.Raycaster();
+  const pts = [origin.clone()];
+  for (let deg = 40; deg <= 215; deg += 12.5) {
+    const th = sgn * deg * Math.PI / 180;
+    const dir = s.clone().multiplyScalar(Math.cos(th)).add(e2.clone().multiplyScalar(Math.sin(th)));
+    rc.set(ringCenter.clone().add(dir.clone().multiplyScalar(3 * length)), dir.clone().negate());
+    const hit = rc.intersectObject(lvMesh, false)[0];
+    if (!hit) continue;
+    const n = hit.face.normal.clone().normalize();
+    pts.push(hit.point.clone().add(n.multiplyScalar(1.0)));
+  }
+  return pts;
 }
 
 /* ---------- Anatomik Bilgiler & Sözlük (Tıkla-Açıkla) ---------- */
 export const REGION_INFO = {
   anterior: {
     ad: 'Ön (anterior) duvar',
-    ekg: 'V3–V4',
+    ekg: 'V1–V4',
     art: 'LAD (sol ön inen arter)',
+    wall: 'anterior',
     desc: 'Sol ventrikülün ön yüzeyi; en geniş kas kütlesine sahiptir.',
   },
   inferior: {
     ad: 'Alt (inferior) duvar',
     ekg: 'II, III, aVF',
     art: 'RCA / posterior inen dal',
+    wall: 'inferior',
     desc: 'Diyaframa oturan alt yüzey; sağ koroner arter beslemesi hakimdir.',
   },
   lateral: {
     ad: 'Yan (lateral) duvar',
     ekg: 'I, aVL, V5–V6',
     art: 'LCx (sirkumfleks arter)',
+    wall: 'lateral',
     desc: 'Sol serbest duvar; yüksek lateral (I, aVL) ve apikal lateral (V5–V6) derivasyonlar yansıtır.',
   },
   septal: {
     ad: 'Septal duvar',
-    ekg: 'V1–V2',
+    ekg: 'V1–V4 (V1–V2 baskın)',
     art: 'LAD septal dalları',
+    wall: 'anterior',
     desc: 'İki ventrikülü ayıran interventriküler septum; ileti demetlerini (His-Purkinje) barındırır.',
   },
 };
@@ -433,6 +457,8 @@ export const INFO = {
     title: 'İnterventriküler Septum',
     category: 'Kas Duvarı',
     desc: 'Sol ve sağ ventrikülü ayıran septum. V1–V2 derivasyonları septal aktiviteyi yansıtır; LAD septal dallarınca beslenir.',
+    leads: 'V1–V4',
+    wall: 'anterior',
   },
   ra: {
     title: 'Sağ Atriyum (RA)',
@@ -472,12 +498,23 @@ export const INFO = {
   lad: {
     title: 'LAD – Sol Ön İnen Arter',
     category: 'Koroner Arter',
-    desc: 'Ön interventriküler olukta seyreder; ön duvar, septum ve apeksi besler. Tıkanması ön duvar MI (V3–V4) oluşturur.',
+    desc: 'Ön interventriküler olukta seyreder; ön duvar, septum ve apeksi besler. Tıkanması ön duvar/septal MI (V1–V4) oluşturur.',
+    leads: 'V1–V4',
+    wall: 'anterior',
   },
   rca: {
     title: 'RCA – Sağ Koroner Arter',
     category: 'Koroner Arter',
     desc: 'Sağ atriyoventriküler olukta ilerler; sağ ventrikül ve alt duvarı (inferior MI: II, III, aVF) besler.',
+    leads: 'II, III, aVF',
+    wall: 'inferior',
+  },
+  lcx: {
+    title: 'LCx – Sirkumfleks Arter',
+    category: 'Koroner Arter',
+    desc: 'Sol ana koronerden ayrılıp sol atriyoventriküler olukta arkaya döner; yan duvarı besler. Tıkanması lateral MI (I, aVL, V5, V6) oluşturur.',
+    leads: 'I, aVL, V5, V6',
+    wall: 'lateral',
   },
 };
 
