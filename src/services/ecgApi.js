@@ -196,7 +196,10 @@ const mockApi = {
 
   async chunk({ start, count, condition = 'normal', disconnectedLeads = [] }) {
     await wait(10);
-    const contextStart = Math.min(start, Math.max(0, start + count - WINDOW_SAMPLES));
+    // Rekonstrüksiyon gerekmiyorsa 10 s bağlam üretilmez
+    const contextStart = disconnectedLeads.length
+      ? Math.min(start, Math.max(0, start + count - WINDOW_SAMPLES))
+      : start;
     const window = generate(contextStart, start + count - contextStart, condition, disconnectedLeads);
     const offset = start - contextStart;
     const { reconstructed } = disconnectedLeads.length

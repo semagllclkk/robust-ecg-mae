@@ -70,7 +70,7 @@ def chunk(req: ChunkRequest):
     """Canlı akış: [start, start+count) aralığındaki ham sinyal + kopuk kanalların rekonstrüksiyonu."""
     end = req.start + req.count
     # Rekonstrüksiyon için model 10 s bağlam görür; yalnızca istenen son kısım döner.
-    context_start = min(req.start, max(0, end - WINDOW_SAMPLES))
+    context_start = min(req.start, max(0, end - WINDOW_SAMPLES)) if req.disconnectedLeads else req.start
     window = signals.generate(context_start, end - context_start, req.condition)
     mask = lead_mask(req.disconnectedLeads)
     window = window * mask[:, None]  # kopuk kablodan sinyal gelmez
