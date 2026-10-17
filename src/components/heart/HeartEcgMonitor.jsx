@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 const MAX_POINTS = 200;
+const POINT_RATE = 60;
 
 function getEcgY(cycle) {
   if (cycle > 0.15 && cycle < 0.25) {
@@ -29,8 +30,9 @@ export default function HeartEcgMonitor({ bpm }) {
     const points = Array(MAX_POINTS).fill(45);
     let width = 0;
     let height = 0;
-    let elapsed = 0;
-    let lastFrame = performance.now();
+    const startTime = performance.now();
+    let emitted = 0;
+    let phase = 0;
     let frame = 0;
     let stopped = false;
 
@@ -45,11 +47,15 @@ export default function HeartEcgMonitor({ bpm }) {
 
     function draw(now) {
       if (stopped) return;
-      elapsed += (now - lastFrame) / 1000;
-      lastFrame = now;
-      const cycle = ((elapsed * bpmRef.current) / 60) % 1;
-      points.push(getEcgY(cycle));
-      points.shift();
+      // Ekran yenileme hızından bağımsız: saniyede sabit POINT_RATE nokta
+      const target = Math.floor(((now - startTime) / 1000) * POINT_RATE);
+      const steps = Math.min(target - emitted, MAX_POINTS);
+      for (let step = 0; step < steps; step += 1) {
+        phase = (phase + bpmRef.current / 60 / POINT_RATE) % 1;
+        points.push(getEcgY(phase));
+        points.shift();
+      }
+      emitted = target;
 
       context.clearRect(0, 0, width, height);
       context.strokeStyle = '#00ff9d';
