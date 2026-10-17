@@ -1,51 +1,37 @@
 /** @type {import('tailwindcss').Config} */
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {
-        background: '#120e15',
-        panel: '#1e1724',
-        line: '#32263d',
-        text: '#f3eef9',
-        muted: '#a395b5',
-        accent: {
-          DEFAULT: '#ff6eb0',
-          hover: '#ff8ec2',
-        },
-        bad: '#ff4d6d',
-        lead: {
-          ant: '#4cc9f0',
-          inf: '#f6c453',
-          lat: '#7bd88f',
-          neutral: '#9aa3b2',
-        },
-        ischemic: {
-          lateral: '#b31225',
-          anterior: '#d91a32',
-          inferior: '#8f0d1c',
-        },
-        control: '#2a1f33',
-        tooltip: '#140f19',
-        ecg: {
-          background: '#0a080c',
-          grid: '#231b2e',
+        bg: token('bg'),
+        surface: token('surface'),
+        sunken: token('sunken'),
+        line: token('line'),
+        'line-strong': token('line-strong'),
+        text: token('text'),
+        muted: token('muted'),
+        subtle: token('subtle'),
+        accent: token('accent'),
+        danger: token('danger'),
+        warning: token('warning'),
+        success: token('success'),
+        recon: token('recon'),
+        wall: {
+          ant: token('wall-ant'),
+          inf: token('wall-inf'),
+          lat: token('wall-lat'),
+          neu: token('wall-neu'),
         },
       },
-      keyframes: {
-        'pulse-error': {
-          '0%, 100%': {
-            fill: '#ff0000',
-            filter: 'drop-shadow(0 0 10px #ff0000)',
-          },
-          '50%': {
-            fill: '#ffffff',
-            filter: 'drop-shadow(0 0 15px #ffffff)',
-          },
-        },
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
       },
-      animation: {
-        'pulse-error': 'pulse-error 1s infinite',
+      borderRadius: {
+        panel: '10px',
       },
     },
   },
