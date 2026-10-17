@@ -1,26 +1,30 @@
 """
-Kanal bazlı MAE + MI sınıflandırıcı eğitimi.
+Çift başlıklı MAE (veya karşılaştırma için 1D-ResNet) eğitimi — TÜBİTAK Raporu İP3.
 
 Önce önbellek üretilmeli:  python -m src.prepare_data
 Çalıştırma (proje kök klasöründen):
-    python -m src.train
-    python -m src.train --epochs 2 --limit-batches 20     # hızlı deneme
+    python -m src.train                                   # MAE  -> models/mae_ecg_checkpoint.pth
+    python -m src.train --arch resnet1d                   # 1D-ResNet temel model -> models/resnet1d_baseline.pth
+    python -m src.train --epochs 1 --limit-batches 20     # hızlı deneme
 """
 import argparse
 import csv
+import math
 import os
 import time
+from contextlib import nullcontext
 
 import numpy as np
 import torch
-from sklearn.metrics import f1_score, roc_auc_score
 from torch.utils.data import DataLoader
 
 from src.dataset import PTBXLProcessedDataset
 from src.losses import MultiTaskLoss
-from src.model import ECGMaskedAutoencoder, random_lead_mask
+from src.metrics import ClassificationMeter, ReconstructionMeter, best_f1_threshold
+from src.model import build_model, random_lead_mask
 
 CHECKPOINT_PATH = "models/mae_ecg_checkpoint.pth"
+BASELINE_PATH = "models/resnet1d_baseline.pth"
 
 
 def get_device():
@@ -31,79 +35,90 @@ def get_device():
     return torch.device("cpu")
 
 
-def classification_metrics(labels, probs, threshold=0.5):
-    preds = (probs >= threshold).astype(int)
-    tp = int(((preds == 1) & (labels == 1)).sum())
-    tn = int(((preds == 0) & (labels == 0)).sum())
-    return {
-        "auroc": float(roc_auc_score(labels, probs)) if len(np.unique(labels)) > 1 else float("nan"),
-        "f1": float(f1_score(labels, preds, zero_division=0)),
-        "acc": float((preds == labels).mean()),
-        "sens": tp / max(int((labels == 1).sum()), 1),
-        "spec": tn / max(int((labels == 0).sum()), 1),
-    }
+def autocast(device, enabled):
+    if enabled and device.type in ("mps", "cuda"):
+        return torch.autocast(device.type, dtype=torch.bfloat16)
+    return nullcontext()
+
+
+def mixed_dropout_mask(batch_size, generator):
+    """Doğrulama senaryosu: eğitim dağılımıyla aynı (k ∈ [1,4], %30 kritik kopma), sabit tohumlu."""
+    return random_lead_mask(batch_size, critical_prob=0.3, generator=generator)
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion, device, n_drop=None, seed=0, max_batches=None):
+def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, amp=True, max_batches=None):
     """
-    Sabit tohumlu kanal kopması altında değerlendirme.
-    n_drop=None: örnek başına U{0..max_drop} kanal (eğitim dağılımı); int: her örnekte tam o kadar kanal.
+    mask_fn(batch_size, generator) -> (B, 12) bool kopma maskesi.  None ise hiçbir kanal kopmaz.
+    Döndürür: kayıp bileşenleri + teşhis metrikleri + rekonstrüksiyon metrikleri (+ ham olasılıklar)
     """
     model.eval()
     gen = torch.Generator().manual_seed(seed)
-    max_drop = model.lead_dropout.max_drop
-    totals = {"loss": 0.0, "rec": 0.0, "cls": 0.0}
-    all_probs, all_labels = [], []
+    totals = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0}
+    cls_meter, rec_meter = ClassificationMeter(), ReconstructionMeter()
     n_batches = 0
-    for i, (x, y) in enumerate(loader):
+    for i, (x, target) in enumerate(loader):
         if max_batches is not None and i >= max_batches:
             break
-        x, y = x.to(device), y.to(device)
-        lead_mask = random_lead_mask(x.shape[0], x.shape[1], max_drop, n_drop, gen).to(device)
-        recon, logits, lead_mask = model(x, lead_mask=lead_mask)
-        loss, parts = criterion(recon, logits, x, y, lead_mask)
+        x = x.to(device)
+        target = {k: v.to(device) for k, v in target.items()}
+        B = x.shape[0]
+        lead_mask = (mask_fn(B, gen) if mask_fn else torch.zeros(B, 12, dtype=torch.bool)).to(device)
+        with autocast(device, amp):
+            out = model(x, lead_mask=lead_mask)
+        out = {k: (v.float() if torch.is_tensor(v) and v.is_floating_point() else v) for k, v in out.items()}
+        loss, parts = criterion(out, x, target)
         totals["loss"] += loss.item()
-        totals["rec"] += parts["rec"]
-        totals["cls"] += parts["cls"]
-        all_probs.append(torch.sigmoid(logits.squeeze(-1)).cpu().numpy())
-        all_labels.append(y.cpu().numpy())
+        for k in ("rec", "cls", "wall"):
+            totals[k] += parts[k]
+        cls_meter.update(out, target)
+        rec_meter.update(out["recon"], x, out["lead_mask"], target["sigma"])
         n_batches += 1
     results = {k: v / max(n_batches, 1) for k, v in totals.items()}
-    results.update(classification_metrics(np.concatenate(all_labels), np.concatenate(all_probs)))
+    results.update(cls_meter.result(threshold))
+    results.update(rec_meter.result())
+    results["_labels"], results["_probs"] = cls_meter.arrays()
     return results
 
 
 def load_checkpoint(path, device):
-    ckpt = torch.load(path, map_location=device)
-    model = ECGMaskedAutoencoder(**ckpt["config"]).to(device)
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    model = build_model(ckpt.get("arch", "mae"), ckpt["config"]).to(device)
     model.load_state_dict(ckpt["model_state"])
+    model.eval()
     return model, ckpt
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Kanal bazlı MAE + MI/Normal sınıflandırıcı eğitimi")
+    parser = argparse.ArgumentParser(description="Çift başlıklı MAE / 1D-ResNet eğitimi")
+    parser.add_argument("--arch", choices=["mae", "resnet1d"], default="mae")
     parser.add_argument("--processed-dir", default="data/processed")
-    parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--epochs", type=int, default=15)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
-    parser.add_argument("--max-drop", type=int, default=4, help="Eğitimde örnek başına en fazla düşürülecek kanal")
-    parser.add_argument("--lambda-rec", type=float, default=1.0)
-    parser.add_argument("--lambda-cls", type=float, default=1.0)
+    parser.add_argument("--warmup-steps", type=int, default=300)
+    parser.add_argument("--min-drop", type=int, default=1, help="LeadDropout: batch başına en az kopan kanal (Rapor: 1)")
+    parser.add_argument("--max-drop", type=int, default=4, help="LeadDropout: batch başına en fazla kopan kanal (Rapor: 4)")
+    parser.add_argument("--critical-prob", type=float, default=0.3, help="Kopmanın tek bir kalp duvarına odaklanma olasılığı")
+    parser.add_argument("--alpha-mse", type=float, default=0.4, help="Rapor Md. 2.4: α")
+    parser.add_argument("--beta-focal", type=float, default=0.6, help="Rapor Md. 2.4: β")
     parser.add_argument("--gamma", type=float, default=2.0, help="Focal Loss odak parametresi")
-    parser.add_argument("--alpha", default="auto",
+    parser.add_argument("--focal-alpha", default="auto",
                         help="Focal Loss MI sınıf ağırlığı: 'auto' = 1 - eğitimdeki MI oranı, 'none' = ağırlıksız, ya da sayı")
-    parser.add_argument("--patience", type=int, default=7, help="Doğrulama AUROC iyileşmezse erken durdurma")
+    parser.add_argument("--patience", type=int, default=5, help="Doğrulama AUROC iyileşmezse erken durdurma")
+    parser.add_argument("--no-amp", action="store_true", help="bfloat16 karışık hassasiyeti kapat")
     parser.add_argument("--limit-batches", type=int, default=None, help="Epoch başına batch sınırı (deneme için)")
-    parser.add_argument("--checkpoint", default=CHECKPOINT_PATH)
+    parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    checkpoint_path = args.checkpoint or (CHECKPOINT_PATH if args.arch == "mae" else BASELINE_PATH)
+    amp = not args.no_amp
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = get_device()
-    print(f"Eğitim cihazı: {device}")
+    print(f"Eğitim cihazı: {device}   mimari: {args.arch}   bfloat16: {amp}")
 
     train_set = PTBXLProcessedDataset("train", args.processed_dir)
     val_set = PTBXLProcessedDataset("val", args.processed_dir)
@@ -111,60 +126,85 @@ def main():
     print(f"Eğitim: {len(train_set)} kayıt (MI oranı {pos_frac:.3f})   Doğrulama: {len(val_set)} kayıt")
 
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
-    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
+    val_loader = DataLoader(val_set, batch_size=64, shuffle=False)
 
-    if args.alpha == "auto":
-        alpha = 1.0 - pos_frac
-    elif args.alpha == "none":
-        alpha = None
+    if args.focal_alpha == "auto":
+        focal_alpha = 1.0 - pos_frac
+    elif args.focal_alpha == "none":
+        focal_alpha = None
     else:
-        alpha = float(args.alpha)
-    print(f"Focal Loss: gamma={args.gamma}, alpha={alpha if alpha is None else round(alpha, 3)}")
+        focal_alpha = float(args.focal_alpha)
 
-    config = dict(in_channels=12, seq_len=1000, patch_size=50, embed_dim=128, depth=4,
-                  decoder_depth=2, num_heads=4, num_classes=1, max_drop=args.max_drop)
-    model = ECGMaskedAutoencoder(**config).to(device)
-    criterion = MultiTaskLoss(args.lambda_rec, args.lambda_cls, args.gamma, alpha)
+    if args.arch == "mae":
+        config = dict(in_channels=12, seq_len=1000, embed_dim=128, depth=2, num_heads=4,
+                      min_drop=args.min_drop, max_drop=args.max_drop, critical_prob=args.critical_prob)
+        alpha_mse = args.alpha_mse
+    else:
+        config = dict(in_channels=12)
+        alpha_mse = 0.0  # 1D-ResNet rekonstrüksiyon yapmaz
+    model = build_model(args.arch, config).to(device)
+    criterion = MultiTaskLoss(alpha_mse, args.beta_focal, args.gamma, focal_alpha)
+    print(f"Kayıp: {alpha_mse}·MSE(maskeli) + {args.beta_focal}·Focal(γ={args.gamma}, α={focal_alpha if focal_alpha is None else round(focal_alpha, 3)})")
+    print(f"Parametre sayısı: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    steps_per_epoch = min(len(train_loader), args.limit_batches or len(train_loader))
+    total_steps = args.epochs * steps_per_epoch
 
-    os.makedirs(os.path.dirname(args.checkpoint) or ".", exist_ok=True)
-    history_path = os.path.splitext(args.checkpoint)[0] + "_history.csv"
+    def lr_lambda(step):
+        if step < args.warmup_steps:
+            return (step + 1) / args.warmup_steps
+        progress = (step - args.warmup_steps) / max(1, total_steps - args.warmup_steps)
+        return 0.5 * (1 + math.cos(math.pi * min(progress, 1.0)))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+    os.makedirs(os.path.dirname(checkpoint_path) or ".", exist_ok=True)
+    history_path = os.path.splitext(checkpoint_path)[0] + "_history.csv"
     history = []
     best_auroc, bad_epochs = -1.0, 0
 
     for epoch in range(1, args.epochs + 1):
         model.train()
         t0 = time.time()
-        sums = {"loss": 0.0, "rec": 0.0, "cls": 0.0}
+        sums = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0}
         n_batches = 0
-        for i, (x, y) in enumerate(train_loader):
+        for i, (x, target) in enumerate(train_loader):
             if args.limit_batches is not None and i >= args.limit_batches:
                 break
-            x, y = x.to(device), y.to(device)
-            recon, logits, lead_mask = model(x)  # LeadDropout eğitim modunda maskeyi üretir
-            loss, parts = criterion(recon, logits, x, y, lead_mask)
+            x = x.to(device)
+            target = {k: v.to(device) for k, v in target.items()}
+            with autocast(device, amp):
+                out = model(x)  # LeadDropout eğitim modunda kopma maskesini üretir
+            out = {k: (v.float() if torch.is_tensor(v) and v.is_floating_point() else v) for k, v in out.items()}
+            loss, parts = criterion(out, x, target)
 
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            scheduler.step()
 
             sums["loss"] += loss.item()
-            sums["rec"] += parts["rec"]
-            sums["cls"] += parts["cls"]
+            for k in ("rec", "cls", "wall"):
+                sums[k] += parts[k]
             n_batches += 1
-        scheduler.step()
+            if (i + 1) % 50 == 0:
+                print(f"  adım {i + 1}/{steps_per_epoch}  loss {sums['loss'] / n_batches:.4f} "
+                      f"rec {sums['rec'] / n_batches:.4f}  ({time.time() - t0:.0f} sn)", flush=True)
         train_stats = {k: v / max(n_batches, 1) for k, v in sums.items()}
 
-        val = evaluate(model, val_loader, criterion, device, n_drop=None, seed=0, max_batches=args.limit_batches)
-        print(f"Epoch {epoch:02d}/{args.epochs}  "
-              f"train loss {train_stats['loss']:.4f} (rec {train_stats['rec']:.4f}, cls {train_stats['cls']:.4f})  |  "
-              f"val loss {val['loss']:.4f} rec {val['rec']:.4f} AUROC {val['auroc']:.4f} F1 {val['f1']:.4f}  "
-              f"({time.time() - t0:.0f} sn)")
+        val = evaluate(model, val_loader, criterion, device, mixed_dropout_mask, seed=0, amp=amp,
+                       max_batches=args.limit_batches)
+        print(f"Epoch {epoch:02d}/{args.epochs}  train loss {train_stats['loss']:.4f} "
+              f"(rec {train_stats['rec']:.4f}, cls {train_stats['cls']:.4f}, duvar {train_stats['wall']:.4f})  |  "
+              f"val AUROC {val['auroc']:.4f} F1 {val['f1']:.4f} duvar-AUROC {val['wall_auroc_macro']:.4f}  "
+              f"RMSE {val['rmse_z']:.4f} R² {val['r2']:.4f} r {val['pearson_r']:.4f}  ({time.time() - t0:.0f} sn)",
+              flush=True)
 
-        history.append({"epoch": epoch, **{f"train_{k}": v for k, v in train_stats.items()},
-                        **{f"val_{k}": v for k, v in val.items()}})
+        row = {"epoch": epoch, **{f"train_{k}": v for k, v in train_stats.items()},
+               **{f"val_{k}": v for k, v in val.items() if not k.startswith("_")}}
+        history.append(row)
         with open(history_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=history[0].keys())
             writer.writeheader()
@@ -172,9 +212,12 @@ def main():
 
         if val["auroc"] > best_auroc:
             best_auroc, bad_epochs = val["auroc"], 0
-            torch.save({"model_state": model.state_dict(), "config": config, "epoch": epoch,
-                        "val_metrics": val, "focal_alpha": alpha, "focal_gamma": args.gamma}, args.checkpoint)
-            print(f"  ✓ En iyi model kaydedildi (val AUROC {best_auroc:.4f}) -> {args.checkpoint}")
+            threshold = best_f1_threshold(val["_labels"], val["_probs"])
+            torch.save({"arch": args.arch, "model_state": model.state_dict(), "config": config, "epoch": epoch,
+                        "val_metrics": {k: v for k, v in val.items() if not k.startswith("_")},
+                        "threshold": threshold, "focal_alpha": focal_alpha, "focal_gamma": args.gamma,
+                        "alpha_mse": alpha_mse, "beta_focal": args.beta_focal}, checkpoint_path)
+            print(f"  ✓ En iyi model kaydedildi (val AUROC {best_auroc:.4f}, F1-eşiği {threshold:.2f}) -> {checkpoint_path}")
         else:
             bad_epochs += 1
             if bad_epochs >= args.patience:

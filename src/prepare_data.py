@@ -33,14 +33,12 @@ import numpy as np
 import pandas as pd
 import wfdb
 
+from src.ecg_constants import FS, LEAD_NAMES, SEQ_LEN
 from src.preprocess import preprocess_ecg
 
-LEAD_NAMES = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 SUPERCLASSES = ["NORM", "MI", "STTC", "CD", "HYP"]
-MI_SUBCLASSES = ["AMI", "IMI", "LMI", "PMI"]  # anatomik duvar (XAI için saklanır)
+MI_SUBCLASSES = ["AMI", "IMI", "LMI", "PMI"]  # anatomik duvar = kriz tipi (AMI/IMI/LMI modelde kullanılır)
 LABEL_NAMES = {0: "Normal", 1: "MI"}
-FS = 100
-SEQ_LEN = 1000
 
 
 def find_ptbxl_root(data_dir):
