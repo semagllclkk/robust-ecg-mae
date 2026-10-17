@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import { api } from '../services/ecgApi.js';
 import { LEADS, LEAD_COLORS } from '../data/ecg.js';
 
-const SAMPLE_RATE = 100;
-const WINDOW_SAMPLES = 1000;
+const SAMPLE_RATE = 45;
+const WINDOW_SAMPLES = 180;
 const CAPACITY = 4096;
 const PREFETCH = 100;
 
@@ -92,7 +92,7 @@ export default function ECGCanvas({
 
       const rowHeight = height / LEADS.length;
       const pixelsPerSample = width / WINDOW_SAMPLES;
-      const scale = rowHeight * 0.35;
+      const scale = rowHeight * 0.45;
       const newest = Math.min(Math.floor(position), available - 1);
 
       context.lineWidth = 1;
