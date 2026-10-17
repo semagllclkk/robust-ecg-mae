@@ -52,4 +52,5 @@ export const SCENARIOS = [
   { value: 'normal', label: 'Normal Sinüs Ritmi' },
   { value: 'ant', label: 'Anterior MI (Ön Duvar)' },
   { value: 'inf', label: 'Inferior MI (Alt Duvar)' },
+  { value: 'lat', label: 'Lateral MI (Yan Duvar)' },
 ];
