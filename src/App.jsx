@@ -12,13 +12,11 @@ export default function App() {
   const [disconnectedLeads, setDisconnectedLeads] = useState([]);
   const [scenario, setScenario] = useState('normal');
   const [prediction, setPrediction] = useState(null);
-  const [fps, setFps] = useState(null);
   const [streamStatus, setStreamStatus] = useState('Bağlanıyor…');
   const [backend, setBackend] = useState({ mode: 'probing', modelSource: null });
   const [notice, setNotice] = useState(null);
 
   const updateStreamStatus = useCallback((status) => setStreamStatus(status), []);
-  const updateFps = useCallback((value) => setFps(value), []);
 
   useEffect(() => api.subscribe(setBackend), []);
 
@@ -71,7 +69,6 @@ export default function App() {
   return (
     <AppShell
       backend={backend}
-      fps={fps}
       onDownloadReport={() => openReport({ scenario, disconnectedLeads, prediction })}
       sidebar={
         <>
@@ -92,7 +89,6 @@ export default function App() {
       <ECGCanvas
         disconnectedLeads={disconnectedLeads}
         onApiStatusChange={updateStreamStatus}
-        onFpsChange={updateFps}
         scenario={scenario}
       />
       <AnatomicHeart disconnectedLeads={disconnectedLeads} prediction={prediction} scenario={scenario} />

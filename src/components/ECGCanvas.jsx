@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { api } from '../services/ecgApi.js';
 import { LEADS, LEAD_COLORS, RECONSTRUCTION_COLOR } from '../data/ecg.js';
+import { publishFps } from '../services/metrics.js';
 import Panel from './ui/Panel.jsx';
 
 const SAMPLE_RATE = 100;
 const WINDOW_SAMPLES = 1000;
 const CAPACITY = 4096;
-const PREFETCH = 100;
+// Tampon 1 s'nin altına düşünce 2 s'lik blok istenir (~0.5 istek/s; önceden her karede istek gidiyordu)
+const LOW_WATER = 100;
+const BATCH = 200;
 const LABEL_WIDTH = 44;
 // EKG kâğıdı: 25 mm/s → 10 s = 250 mm; genlik 10 mm/mV (satıra sığmazsa küçültülür)
 const PAPER_MM = (WINDOW_SAMPLES / SAMPLE_RATE) * 25;
@@ -15,7 +18,6 @@ const PAPER = { bg: '#fffbfa', minor: '#f7dcdc', major: '#eeb4b4', ink: '#1d2127
 export default function ECGCanvas({
   disconnectedLeads,
   scenario,
-  onFpsChange,
   onApiStatusChange,
 }) {
   const canvasRef = useRef(null);
@@ -93,11 +95,11 @@ export default function ECGCanvas({
     }
 
     function prefetch() {
-      const required = Math.floor(position) + PREFETCH;
       const refetch = refetchRef.current && available > 0;
-      if (pending || (!refetch && available >= required) || performance.now() < retryAt) {
+      if (pending || (!refetch && available >= Math.floor(position) + LOW_WATER) || performance.now() < retryAt) {
         return;
       }
+      const required = Math.floor(position) + LOW_WATER + BATCH;
 
       // Sekme arka plandayken rAF durur; dönüşte yalnızca görünen pencere istenir
       const windowStart = Math.max(0, Math.floor(position) - WINDOW_SAMPLES);
@@ -222,7 +224,7 @@ export default function ECGCanvas({
 
       frames += 1;
       if (now - fpsStart >= 500) {
-        onFpsChange(Math.round((frames * 1000) / (now - fpsStart)));
+        publishFps(Math.round((frames * 1000) / (now - fpsStart)));
         frames = 0;
         fpsStart = now;
       }
@@ -240,7 +242,7 @@ export default function ECGCanvas({
       observer.disconnect();
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [onApiStatusChange, onFpsChange]);
+  }, [onApiStatusChange]);
 
   return (
     <Panel

@@ -1,4 +1,10 @@
+import { useFps } from '../services/metrics.js';
 import { Button } from './ui/controls.jsx';
+
+function FpsBadge() {
+  const fps = useFps();
+  return <span className="num hidden text-xs text-subtle sm:inline">{fps ?? '–'} fps</span>;
+}
 
 function BackendStatus({ backend, streamStatus }) {
   const ok = streamStatus !== 'Hata';
@@ -18,7 +24,7 @@ function BackendStatus({ backend, streamStatus }) {
   );
 }
 
-export default function AppShell({ backend, streamStatus, fps, onDownloadReport, sidebar, children }) {
+export default function AppShell({ backend, streamStatus, onDownloadReport, sidebar, children }) {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 border-b border-line bg-surface/90 backdrop-blur">
@@ -43,7 +49,7 @@ export default function AppShell({ backend, streamStatus, fps, onDownloadReport,
           </div>
           <div className="flex items-center gap-4">
             <BackendStatus backend={backend} streamStatus={streamStatus} />
-            <span className="num hidden text-xs text-subtle sm:inline">{fps ?? '–'} fps</span>
+            <FpsBadge />
             <Button onClick={onDownloadReport}>Rapor (PDF)</Button>
           </div>
         </div>
