@@ -84,14 +84,19 @@ def check_targets(results, baseline=None):
         print(f"{ok(e_rmse < TARGET_RMSE)} En yüksek RMSE = {e_rmse:.4f} mV  [MAE + Einthoven kısıtı, Risk 1 B planı]")
         print(f"{ok(e_r2 > TARGET_R2)} En düşük R² = {e_r2:.4f}  [MAE + Einthoven kısıtı, Risk 1 B planı]")
     if baseline is not None:
-        reductions = []
-        for name in drop:
-            fb, fm = baseline[name]["fnr"], results[name]["fnr"]
-            reductions.append((fb - fm) / fb if fb > 0 else 0.0)
-        mean_red = float(np.mean(reductions))
-        print(f"{ok(mean_red >= TARGET_FNR_REDUCTION)} 1D-ResNet'e göre ortalama yanlış negatif azalması = "
-              f"%{100 * mean_red:.1f}  (hipotez ≥ %{100 * TARGET_FNR_REDUCTION:.0f})")
-        return mean_red
+        # Hipotez: 1–4 kanal koptuğunda yanlış negatif oranı. Tüm kopma senaryolarında havuzlanmış FNR
+        # (toplam FN / toplam MI; senaryolarda MI sayısı eşit olduğundan FNR'lerin ortalaması) karşılaştırılır.
+        fnr_mae = float(np.mean([results[n]["fnr"] for n in drop]))
+        fnr_base = float(np.mean([baseline[n]["fnr"] for n in drop]))
+        pooled_red = (fnr_base - fnr_mae) / fnr_base if fnr_base > 0 else 0.0
+        print(f"{ok(pooled_red >= TARGET_FNR_REDUCTION)} 1D-ResNet'e göre yanlış negatif azalması = %{100 * pooled_red:.1f}  "
+              f"(havuzlanmış FNR: MAE {fnr_mae:.4f}, 1D-ResNet {fnr_base:.4f}; hipotez ≥ %{100 * TARGET_FNR_REDUCTION:.0f})")
+        print("   Senaryo bazında (1D-ResNet FNR → MAE FNR, 1D-ResNet özgüllüğü):")
+        for n in drop:
+            fb, fm = baseline[n]["fnr"], results[n]["fnr"]
+            red = (fb - fm) / fb if fb > 0 else 0.0
+            print(f"     {n:36s} {fb:.3f} → {fm:.3f}  (%{100 * red:+.1f})   özgüllük {baseline[n]['spec']:.3f}")
+        return pooled_red
     return None
 
 
