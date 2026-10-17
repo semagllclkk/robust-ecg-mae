@@ -73,7 +73,11 @@ export default function App() {
         scenario={scenario}
       />
       <section className="flex flex-col gap-4 min-[901px]:col-span-2 min-[1201px]:col-span-1">
-        <AnatomicHeart disconnectedLeads={disconnectedLeads} />
+        <AnatomicHeart
+          disconnectedLeads={disconnectedLeads}
+          prediction={prediction}
+          scenario={scenario}
+        />
       </section>
     </DashboardLayout>
   );

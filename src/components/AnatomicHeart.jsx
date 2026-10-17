@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { LEADS } from '../data/ecg.js';
 import HeartEcgMonitor from './heart/HeartEcgMonitor.jsx';
 
@@ -39,9 +39,20 @@ const VIEWS = [
 const buttonClass =
   'rounded-md border px-2 py-2 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent';
 
-export default function AnatomicHeart({ disconnectedLeads = [] }) {
+export default function AnatomicHeart({ disconnectedLeads = [], prediction = null, scenario }) {
   const [bpm, setBpm] = useState(72);
   const [highlightedRegion, setHighlightedRegion] = useState(null);
+  const [userOverride, setUserOverride] = useState(false);
+
+  useEffect(() => {
+    setUserOverride(false);
+  }, [scenario]);
+
+  useEffect(() => {
+    if (!userOverride) {
+      setHighlightedRegion(prediction?.region ?? null);
+    }
+  }, [prediction?.region, userOverride]);
   const [cameraView, setCameraView] = useState('anterior');
   const [beatActive, setBeatActive] = useState(true);
   const [wallOpacityPercent, setWallOpacityPercent] = useState(0); // 0% saydam = 100% opak
@@ -234,11 +245,12 @@ export default function AnatomicHeart({ disconnectedLeads = [] }) {
                   : 'border-line bg-control text-muted hover:border-accent hover:text-accent'
               }`}
               key={region.id}
-              onClick={() =>
+              onClick={() => {
+                setUserOverride(true);
                 setHighlightedRegion((current) =>
                   current === region.id ? null : region.id,
-                )
-              }
+                );
+              }}
               type="button"
             >
               {region.label}
@@ -248,7 +260,7 @@ export default function AnatomicHeart({ disconnectedLeads = [] }) {
         <button
           className={`${buttonClass} mt-2 w-full border-line bg-control text-muted hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50`}
           disabled={!highlightedRegion}
-          onClick={() => setHighlightedRegion(null)}
+          onClick={() => { setUserOverride(false); setHighlightedRegion(null); }}
           type="button"
         >
           Vurguyu Temizle

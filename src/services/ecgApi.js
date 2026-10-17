@@ -60,9 +60,10 @@ export const api = {
   async predict({ condition = 'normal', disconnectedLeads = [] } = {}) {
     await wait(120);
     const predictions = {
-      normal: { label: 'Normal Sinüs Ritmi', confidence: 0.98 },
-      ant: { label: 'Anterior MI', confidence: 0.94 },
-      inf: { label: 'Inferior MI', confidence: 0.93 },
+      normal: { label: 'Normal Sinüs Ritmi', confidence: 0.98, region: null, stDeviation: 0 },
+      ant:    { label: 'Anterior MI',         confidence: 0.94, region: 'anterior', stDeviation: 2.4 },
+      inf:    { label: 'Inferior MI',          confidence: 0.93, region: 'inferior', stDeviation: 1.8 },
+      lat:    { label: 'Lateral MI',           confidence: 0.91, region: 'lateral',  stDeviation: 1.5 },
     };
     const result = predictions[condition];
 
