@@ -18,6 +18,7 @@ export default function DashboardLayout({
   children,
   apiStatus,
   fps,
+  onDownloadReport,
 }) {
   const apiTone = apiStatus === 'Hata' ? 'bad' : 'accent';
 
@@ -28,9 +29,16 @@ export default function DashboardLayout({
           EKG İzleme Paneli{' '}
           <span className="font-normal text-accent">· İP2 &amp; İP4 XAI Modülü</span>
         </h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <StatusBadge tone={apiTone}>API: {apiStatus}</StatusBadge>
           <StatusBadge>FPS: {fps ?? '–'}</StatusBadge>
+          <button
+            className="rounded-full border border-accent bg-accent/10 px-3 py-1 text-xs font-medium text-accent transition hover:bg-accent/20"
+            onClick={onDownloadReport}
+            type="button"
+          >
+            PDF İndir
+          </button>
         </div>
       </header>
       <main className="grid min-h-[calc(100vh-54px)] grid-cols-1 gap-4 px-5 py-4 min-[901px]:grid-cols-[280px_minmax(0,1fr)] min-[1201px]:grid-cols-[280px_minmax(0,1fr)_300px]">
