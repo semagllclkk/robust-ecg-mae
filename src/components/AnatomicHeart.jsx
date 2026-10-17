@@ -181,6 +181,24 @@ export default function AnatomicHeart({ disconnectedLeads = [], prediction = nul
                   {selectedInfo.extra}
                 </p>
               )}
+
+              {prediction && prediction.region && (
+                <div className="mt-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px]">
+                  <div className="flex justify-between text-text">
+                    <span className="font-semibold text-amber-400">ST Sapması:</span>
+                    <span>+{prediction.stDeviation.toFixed(1)} mm</span>
+                  </div>
+                  <div className="mt-1 flex justify-between text-text">
+                    <span className="font-semibold text-amber-400">Model Güveni:</span>
+                    <span>%{Math.round(prediction.confidence * 100)}</span>
+                  </div>
+                  {disconnectedLeads.length > 0 && (
+                    <p className="mt-1 text-[10px] text-amber-200/70">
+                      {disconnectedLeads.length} kopuk kanal nedeniyle güven düşürüldü.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
