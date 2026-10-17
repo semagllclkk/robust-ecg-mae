@@ -11,6 +11,7 @@ export default function LeadControls({
   scenario,
   onScenarioChange,
   prediction,
+  notice,
 }) {
   return (
     <section className="flex flex-col gap-4">
@@ -46,6 +47,11 @@ export default function LeadControls({
             );
           })}
         </div>
+        {notice && (
+          <p className="mb-0 mt-2.5 rounded-md border border-bad/40 bg-bad/10 px-2.5 py-1.5 text-xs text-bad" role="alert">
+            {notice}
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             className={baseButton}
@@ -66,7 +72,7 @@ export default function LeadControls({
 
       <div className="flex flex-1 flex-col rounded-2xl border border-line bg-panel p-4">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-accent">
-          Senaryo (Mock-API)
+          Senaryo
         </h2>
         <label className="sr-only" htmlFor="scenario">
           EKG senaryosu
@@ -85,7 +91,7 @@ export default function LeadControls({
         </select>
         {prediction && (
           <div className="mt-4 rounded-lg border border-line bg-background/60 p-3">
-            <p className="m-0 text-xs text-muted">Mock tahmin</p>
+            <p className="m-0 text-xs text-muted">Model tahmini</p>
             <p className="mb-0 mt-1 font-semibold text-text">
               {prediction.label}
               <span className="ml-2 text-xs font-normal text-muted">

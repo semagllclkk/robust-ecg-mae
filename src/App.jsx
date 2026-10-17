@@ -4,7 +4,9 @@ import DashboardLayout from './components/DashboardLayout.jsx';
 import ECGCanvas from './components/ECGCanvas.jsx';
 import LeadControls from './components/LeadControls.jsx';
 import { api } from './services/ecgApi.js';
-import { LEADS, SCENARIOS } from './data/ecg.js';
+import { LEADS, RECONSTRUCTION_METHODS, SCENARIOS, WALLS } from './data/ecg.js';
+
+const MAX_DISCONNECTED = 4;
 
 export default function App() {
   const [disconnectedLeads, setDisconnectedLeads] = useState([]);
@@ -12,13 +14,22 @@ export default function App() {
   const [prediction, setPrediction] = useState(null);
   const [fps, setFps] = useState(null);
   const [apiStatus, setApiStatus] = useState('Bağlanıyor…');
+  const [backend, setBackend] = useState({ mode: 'probing', modelSource: null });
+  const [notice, setNotice] = useState(null);
+
+  useEffect(() => api.subscribe(setBackend), []);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(null), 2500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const updateApiStatus = useCallback((status) => setApiStatus(status), []);
   const updateFps = useCallback((value) => setFps(value), []);
 
   useEffect(() => {
     let cancelled = false;
-    setPrediction(null);
     api
       .predict({ condition: scenario, disconnectedLeads })
       .then((result) => {
@@ -40,8 +51,8 @@ export default function App() {
       if (current.includes(index)) {
         return current.filter((leadIndex) => leadIndex !== index);
       }
-      if (current.length >= 4) {
-        window.alert('Maksimum 4 kanal koparılabilir.');
+      if (current.length >= MAX_DISCONNECTED) {
+        setNotice(`En fazla ${MAX_DISCONNECTED} kanal koparılabilir.`);
         return current;
       }
       return [...current, index];
@@ -49,11 +60,13 @@ export default function App() {
   }
 
   function disconnectRandomLeads() {
-    const count = 1 + Math.floor(Math.random() * 4);
-    const shuffled = Array.from({ length: 12 }, (_, index) => index).sort(
-      () => Math.random() - 0.5,
-    );
-    setDisconnectedLeads(shuffled.slice(0, count));
+    const count = 1 + Math.floor(Math.random() * MAX_DISCONNECTED);
+    const leads = Array.from({ length: 12 }, (_, index) => index);
+    for (let i = leads.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [leads[i], leads[j]] = [leads[j], leads[i]];
+    }
+    setDisconnectedLeads(leads.slice(0, count).sort((a, b) => a - b));
   }
 
   function downloadReport() {
@@ -68,7 +81,27 @@ export default function App() {
     const timestamp = new Date().toLocaleString('tr-TR');
     const predLabel = prediction?.label ?? '–';
     const predConf = prediction ? `%${Math.round(prediction.confidence * 100)}` : '–';
-    const predST = prediction?.stDeviation ? `+${prediction.stDeviation.toFixed(1)} mm` : '–';
+    const predST = prediction?.region ? `+${prediction.stDeviation.toFixed(1)} mm` : '–';
+    const wallRows = prediction
+      ? Object.entries(WALLS)
+          .map(
+            ([wall, meta]) =>
+              `<tr><th>${meta.label} (${meta.leads})</th><td>%${Math.round(
+                (prediction.wallProbabilities?.[wall] ?? 0) * 100,
+              )}</td></tr>`,
+          )
+          .join('')
+      : '';
+    const stRow = prediction
+      ? LEADS.map((lead, i) => `<td>${lead.name}<br>${prediction.stByLead[i].toFixed(1)}</td>`).join('')
+      : '';
+    const reconText =
+      disconnectedLeads
+        .map(
+          (i) =>
+            `${LEADS[i].name}: ${RECONSTRUCTION_METHODS[prediction?.reconstruction?.[i]] ?? '–'}`,
+        )
+        .join(', ') || 'Yok';
 
     const html = `<!DOCTYPE html>
 <html lang="tr">
@@ -97,20 +130,29 @@ export default function App() {
   <tr><th>Tanı</th><td><span class="badge ${prediction?.region ? 'warn' : ''}">${predLabel}</span></td></tr>
   <tr><th>Model Güveni</th><td>${predConf}</td></tr>
   <tr><th>ST Sapması</th><td>${predST}</td></tr>
+  <tr><th>Şüpheli Arter</th><td>${prediction?.artery ?? '–'}</td></tr>
+  <tr><th>Model Kaynağı</th><td>${prediction?.modelSource ?? '–'}</td></tr>
 </table>
+
+<h2>Duvar Olasılıkları</h2>
+<table>${wallRows}</table>
+
+<h2>Derivasyon Bazında ST Sapması (mm)</h2>
+<table><tr>${stRow}</tr></table>
 
 <h2>Derivasyon Durumu</h2>
 <table>
   <tr><th>Bağlı Kanallar (${connectedLeads.length}/12)</th><td>${connectedLeads.join(', ') || '–'}</td></tr>
   <tr><th>Kopuk Kanallar (${disconnectedNames.length})</th><td>${disconnectedNames.join(', ') || 'Yok'}</td></tr>
+  <tr><th>Rekonstrüksiyon</th><td>${reconText}</td></tr>
 </table>
 
 <h2>Senaryo</h2>
 <p>${scenarioLabel}</p>
 
 <footer>
-  Bu rapor EKG İzleme Paneli (İP2 &amp; İP4 XAI Modülü) tarafından otomatik üretilmiştir.
-  Mock-API verisi içermektedir; klinik karar için kullanılamaz.
+  Bu rapor EKG İzleme Paneli tarafından otomatik üretilmiştir. Araştırma prototipidir;
+  klinik karar için kullanılamaz.
 </footer>
 <script>window.print();</script>
 </body>
@@ -124,12 +166,18 @@ export default function App() {
   }
 
   return (
-    <DashboardLayout apiStatus={apiStatus} fps={fps} onDownloadReport={downloadReport}>
+    <DashboardLayout
+      apiStatus={apiStatus}
+      backend={backend}
+      fps={fps}
+      onDownloadReport={downloadReport}
+    >
       <LeadControls
         disconnectedLeads={disconnectedLeads}
         onRandomDisconnect={disconnectRandomLeads}
         onReconnectAll={() => setDisconnectedLeads([])}
         onScenarioChange={setScenario}
+        notice={notice}
         onToggleLead={toggleLead}
         prediction={prediction}
         scenario={scenario}
