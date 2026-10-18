@@ -8,7 +8,7 @@
 
 ## Rapor hedefleri
 
-Değerler 15 epoch'luk modele aittir: `models/mae_ecg_checkpoint.pth`.
+Değerler 15 epoch'luk ana modele aittir: `models/mae_ecg_checkpoint.pth`. 30 epoch karşılaştırması aşağıda.
 
 | Hedef (Rapor) | Sonuç | Durum |
 |---|---|---|
@@ -59,14 +59,32 @@ Okun sağındaki değerler: MAE + Einthoven kısıtı (Risk 1 B planı).
 3. **Einthoven kısıtı (Risk 1 B planı) ekstremite derivasyonlarını tam çözüyor.** Kritik Inferior kopmasında R² 0.848'den 1.000'e çıkıyor. Grafik: `results/reconstruction_inferior_einthoven.png`. Göğüs derivasyonlarına bu kısıt uygulanamıyor; onlar fiziksel olarak bağımsız.
 4. **Kriz tipi ayrımı güçlü.** Anterior/Inferior/Lateral MI ayrımında AUROC 0.95. Lateral MI test setinde yalnızca 20 kayıt olduğu için o değer daha az güvenilir.
 
-## 30 epoch'luk ikinci eğitim
+## 30 epoch'luk ikinci eğitim (karşılaştırma)
 
-15 epoch'un sonunda doğrulama eğrileri (AUROC, R²) hâlâ yükseliyordu. Bu yüzden aynı ayarlarla 30 epoch'luk ikinci bir eğitim başlatıldı:
+15 epoch'un sonunda doğrulama eğrileri hâlâ yükseldiği için aynı ayarlarla 30 epoch'luk ikinci bir eğitim yapıldı (`models/mae_ecg_checkpoint_30ep.pth`, `results/30ep/`). En iyi doğrulama AUROC'u 22. epoch'ta geldi; 8 epoch iyileşme olmayınca eğitim durdu.
 
-- Model: `models/mae_ecg_checkpoint_30ep.pth`
-- Sonuçlar: `results/30ep/`
+| Ölçüt | 15 epoch (ana model) | 30 epoch |
+|---|---|---|
+| Doğrulama AUROC (model seçim ölçütü) | **0.9765** | 0.9757 |
+| Test F1, 12 kanal | **0.928** | 0.913 |
+| Test F1, rastgele 1–4 kopma | **0.915–0.927** | 0.910–0.914 |
+| Test F1, kritik Anterior / Inferior / Lateral | 0.878 / **0.872** / **0.914** | **0.882** / 0.864 / 0.902 |
+| Yanlış negatif azalması (havuzlanmış) | **%46.5** | %28.9 |
+| R², rastgele 1–4 kopma | 0.877–0.914 | **0.897–0.928** |
+| R², kritik Anterior / Inferior / Lateral | 0.700 / 0.848 / 0.890 | **0.718 / 0.898 / 0.909** |
+| En yüksek RMSE | 0.149 mV | **0.143 mV** |
 
-Amaç, kritik Anterior/Inferior F1'ini 0.88'in üstüne ve Anterior R²'sini yükseltmek. Sonuçlar aşağıya eklenecek.
+**Karar:** Ana model 15 epoch'luk modeldir. Seçim, raporun yöntemine uygun olarak doğrulama setine göre yapıldı; test sonuçları da aynı yönü gösteriyor.
+
+Daha uzun eğitim rekonstrüksiyonu iyileştiriyor (R² +0.02–0.05), ama sınıflandırma başlığı aşırı öğrenmeye başlıyor: eğitim Focal kaybı 0.019'dan 0.010'a düşerken doğrulama AUROC'u düşüyor. Raporun asıl amacı kopmaya rağmen teşhis olduğundan 15 epoch tercih edildi.
+
+**Kalan iki açık (İP6 optimizasyonu için):**
+1. Kritik Anterior ve Inferior kopmasında F1 0.87–0.88; hedef > 0.88, sınırda.
+2. Kritik Anterior'da R² 0.70–0.72; hedef > 0.80. V1–V4'ün dördü birden koptuğunda sağ prekordiyal bilgi kalan kanallarda yeterince yok.
+
+Raporun İP6 kapsamında ("modelin optimizasyonu") denenebilecekler:
+- Sınıflandırma ve rekonstrüksiyon için ayrı checkpoint seçimi, ya da Focal başlığına daha güçlü düzenlileştirme (dropout, ağırlık sönümü).
+- Rapordaki α/β (0.4/0.6) sabit tutularak yalnızca eğitim süresi ve öğrenme oranı ayarı.
 
 ## Dosyalar ve yeniden üretme
 
