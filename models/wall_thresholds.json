@@ -1,31 +1,31 @@
 {
   "checkpoint": "models/mae_ecg_checkpoint.pth",
-  "checkpoint_sha256": "ae2453f86738ca239bc0a4197d0dcbc64baba2fece794bbd05ed7d15fca728e1",
+  "checkpoint_sha256": "623f57c24c68280309e6a89c345efab98f39d0f44c5f99e31dd3f2e26e864202",
   "epoch": 15,
   "split": "val (strat_fold 9)",
   "thresholds": {
-    "Anterior": 0.47,
-    "Inferior": 0.38,
-    "Lateral": 0.43
+    "Anterior": 0.51,
+    "Inferior": 0.47,
+    "Lateral": 0.48
   },
   "details": {
     "Anterior": {
-      "threshold": 0.47,
+      "threshold": 0.51,
       "positives": 612,
-      "val_f1_at_0.5": 0.8914,
-      "val_f1_calibrated": 0.8952
+      "val_f1_at_0.5": 0.9021,
+      "val_f1_calibrated": 0.9053
     },
     "Inferior": {
-      "threshold": 0.38,
+      "threshold": 0.47,
       "positives": 652,
-      "val_f1_at_0.5": 0.8995,
-      "val_f1_calibrated": 0.9021
+      "val_f1_at_0.5": 0.9125,
+      "val_f1_calibrated": 0.9181
     },
     "Lateral": {
-      "threshold": 0.43,
+      "threshold": 0.48,
       "positives": 40,
-      "val_f1_at_0.5": 0.4138,
-      "val_f1_calibrated": 0.5
+      "val_f1_at_0.5": 0.4667,
+      "val_f1_calibrated": 0.5538
     }
   }
 }

@@ -73,7 +73,8 @@ if os.path.exists(MODEL_PATH):
               "`python -m src.train` ile yeniden eğitin. Eğitilmemiş ağırlıklarla (mock) çalışılıyor.")
     else:
         MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
-        MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
+        MODEL_SOURCE = (f"MAE (PTB-XL, epoch {_ckpt['epoch']}"
+                        f"{', genlik farkındalıklı' if getattr(model, 'amplitude_aware', False) else ''})")
         WALL_THRESHOLDS.update(load_wall_thresholds(WALL_THRESHOLDS_PATH, MODEL_PATH))
         print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f}, "
               f"duvar eşikleri {', '.join(f'{w} {t:.2f}' for w, t in WALL_THRESHOLDS.items())})")
