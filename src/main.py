@@ -10,6 +10,7 @@ import pandas as pd
 import os
 import io
 import random
+import threading
 import time
 
 from reportlab.lib.pagesizes import letter
@@ -139,7 +140,17 @@ def resolve_dropped(active_lead_count: int, dropped_leads):
     return disabled
 
 
+# FastAPI eşzamanlı istekleri ayrı iş parçacıklarında çalıştırır; Apple GPU'da (MPS/Metal) iki iş parçacığının
+# modeli aynı anda çalıştırması Metal'i çökertir. Tüm GPU çalışması bu kilitle sıraya alınır (~20–30 ms/çağrı).
+_gpu_lock = threading.RLock()
+
+
 def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: list):
+    with _gpu_lock:
+        return _run_inference(z, mu, sigma, disabled)
+
+
+def _run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: list):
     """
     z      : (12, 1000) filtrelenmiş + z-score sinyal (kopan kanalların içeriği kullanılmaz)
     mu/sigma: (12,) mV'a dönüş istatistikleri (kopan kanallar için popülasyon değeri verilmeli)
@@ -385,6 +396,11 @@ def ui_record_row(condition: str, new: bool = False) -> int:
 
 
 def ui_analysis(condition: str, disconnected: list[int]) -> dict:
+    with _gpu_lock:  # önbellek de aynı kilitle: aynı analiz iki kez hesaplanmasın
+        return _ui_analysis(condition, disconnected)
+
+
+def _ui_analysis(condition: str, disconnected: list[int]) -> dict:
     key = (ui_record_row(condition), tuple(disconnected))
     if key not in _ui_cache:
         _ui_cache[key] = analyze_row(key[0], list(disconnected))

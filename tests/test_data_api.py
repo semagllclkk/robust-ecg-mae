@@ -116,3 +116,22 @@ def test_ui_contract_for_dashboard():
         assert c.post("/api/predict", json={"condition": "xyz"}).status_code == 422
         assert c.post("/api/predict", json={"condition": "normal", "disconnectedLeads": [0, 1, 2, 3, 4]}).status_code == 422
         assert c.post("/api/chunk", json={"start": 0, "count": 10, "condition": "normal", "disconnectedLeads": [12]}).status_code == 422
+
+
+@needs_data
+@needs_model
+def test_concurrent_requests_do_not_crash():
+    """Arayüz chunk ve predict'i aynı anda gönderir; GPU'da eşzamanlı çıkarım çökmemeli (Metal hatası)."""
+    from concurrent.futures import ThreadPoolExecutor
+    from fastapi.testclient import TestClient
+    import src.main as m
+
+    with TestClient(m.app) as c:
+        def call(i):
+            leads = [i % 12, (i + 5) % 12]
+            if i % 2:
+                return c.post("/api/predict", json={"condition": "inf", "disconnectedLeads": leads}).status_code
+            return c.post("/api/chunk", json={"start": i * 100, "count": 200, "condition": "inf",
+                                              "disconnectedLeads": leads}).status_code
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            assert set(pool.map(call, range(40))) == {200}
