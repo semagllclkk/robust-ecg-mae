@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import os
 import io
-import json
 import random
 import sys
 import threading
@@ -33,6 +32,7 @@ from src.einthoven import einthoven_complete
 from src.preprocessing import preprocess_ecg
 from src.st_analysis import MV_PER_MM, st_deviation_mv
 from src.train import load_checkpoint
+from src.calibrate_walls import load_wall_thresholds
 
 # --------------------------------------------------------------------------
 # 1. Uygulama ve CORS Yapılandırması
@@ -60,9 +60,8 @@ DEMO_DIR = "data/demo"  # tam önbellek yoksa: repodaki küçük demo seti (pyth
 WALL_THRESHOLDS_PATH = "models/wall_thresholds.json"  # python -m src.calibrate_walls (doğrulama seti)
 # Kriz tipi: P(duvar | MI) duvarın eşiğini geçerse duvar etkilenmiş sayılır. Kalibrasyon dosyası yoksa 0.5.
 WALL_THRESHOLDS = {w: 0.5 for w in WALL_NAMES}
-if os.path.exists(WALL_THRESHOLDS_PATH):
-    with open(WALL_THRESHOLDS_PATH, encoding="utf-8") as _fh:
-        WALL_THRESHOLDS.update(json.load(_fh)["thresholds"])
+
+
 
 model, MODEL_LOADED, DECISION_THRESHOLD = ECGMaskedAutoencoder().to(device).eval(), False, 0.5
 MODEL_SOURCE = "MAE (eğitilmemiş)"
@@ -75,6 +74,7 @@ if os.path.exists(MODEL_PATH):
     else:
         MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
         MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
+        WALL_THRESHOLDS.update(load_wall_thresholds(WALL_THRESHOLDS_PATH, MODEL_PATH))
         print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f}, "
               f"duvar eşikleri {', '.join(f'{w} {t:.2f}' for w, t in WALL_THRESHOLDS.items())})")
 else:

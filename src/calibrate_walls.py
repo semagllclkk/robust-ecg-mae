@@ -14,7 +14,9 @@ Sonuç models/wall_thresholds.json dosyasına yazılır; API bu dosyayı bulursa
     python -m src.calibrate_walls
 """
 import argparse
+import hashlib
 import json
+import os
 
 import numpy as np
 import torch
@@ -25,6 +27,31 @@ from src.ecg_constants import WALL_NAMES
 from src.lead_dropout import full_keep_mask, random_keep_mask
 from src.metrics import best_f1_threshold
 from src.train import load_checkpoint
+
+
+def checkpoint_sha256(path):
+    """Checkpoint dosyasının parmak izi: eşiklerin hangi model için hesaplandığını API'nin doğrulaması için."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_wall_thresholds(path, checkpoint_path):
+    """
+    Kalibre eşikleri yalnızca hangi checkpoint için hesaplandıysa o model yüklüyken kullanır (SHA-256 eşleşmesi).
+    Model değiştiyse (ör. yeniden eğitim) eski eşikler sessizce uygulanmaz: uyarı verilir, 0.5 kullanılır.
+    """
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        cal = json.load(fh)
+    if cal.get("checkpoint_sha256") != checkpoint_sha256(checkpoint_path):
+        print(f"⚠ Uyarı: {path} başka bir model için kalibre edilmiş; duvar eşikleri 0.5 kullanılıyor. "
+              "`python -m src.calibrate_walls` ile yeniden kalibre edin.")
+        return {}
+    return cal["thresholds"]
 
 
 def wall_thresholds(wall_labels, wall_probs):
@@ -72,7 +99,8 @@ def main():
               f"val F1 {before:.3f} -> {after:.3f}")
 
     with open(args.output, "w", encoding="utf-8") as fh:
-        json.dump({"checkpoint": args.checkpoint, "epoch": ckpt.get("epoch"), "split": "val (strat_fold 9)",
+        json.dump({"checkpoint": args.checkpoint, "checkpoint_sha256": checkpoint_sha256(args.checkpoint),
+                   "epoch": ckpt.get("epoch"), "split": "val (strat_fold 9)",
                    "thresholds": thresholds, "details": report}, fh, ensure_ascii=False, indent=2)
     print(f"Yazıldı: {args.output}")
 

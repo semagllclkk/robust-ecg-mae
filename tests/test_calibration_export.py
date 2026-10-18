@@ -29,3 +29,19 @@ def test_conv_stft_matches_original():
     x = torch.randn(6, 1000)
     with torch.no_grad():
         assert torch.allclose(stft(x), _ConvSTFT(stft)(x), atol=1e-4)
+
+
+def test_wall_thresholds_bound_to_checkpoint(tmp_path):
+    """Kalibre eşikler yalnızca hesaplandıkları checkpoint ile kullanılır; model değişirse 0.5'e dönülür."""
+    import json
+    from src.calibrate_walls import checkpoint_sha256, load_wall_thresholds
+
+    ckpt, other = tmp_path / "model.pth", tmp_path / "other.pth"
+    ckpt.write_bytes(b"model-a")
+    other.write_bytes(b"model-b")
+    cal = tmp_path / "wall_thresholds.json"
+    cal.write_text(json.dumps({"checkpoint_sha256": checkpoint_sha256(ckpt),
+                               "thresholds": {"Anterior": 0.5, "Inferior": 0.45, "Lateral": 0.3}}))
+    assert load_wall_thresholds(cal, ckpt)["Lateral"] == 0.3
+    assert load_wall_thresholds(cal, other) == {}             # başka model -> kalibrasyon yok sayılır
+    assert load_wall_thresholds(tmp_path / "yok.json", ckpt) == {}
