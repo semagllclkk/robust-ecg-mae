@@ -139,6 +139,18 @@ Grafikler: `results/noise/noise_f1.png`, `results/noise/noise_example.png`. Tüm
    - Parazitli kanallar kusursuz bilinip maskelenseydi ("oracle"), F1 hafif ve orta gürültüde biraz düşerdi (gürültülü kanal hâlâ işe yarar bilgi taşıyor). Yalnızca ağır elektrot hareketinde yükselirdi: 0.853'ten 0.911'e.
    - Sonuç: ayrı bir gürültü tespit adımı ancak ağır elektrot hareketi için anlamlı. Daha iyi bir sinyal kalitesi göstergesi (SQI), İP6 optimizasyonu ya da raporun "Yeni Proje" bölümündeki gürültü çalışmaları kapsamında ele alınabilir.
 
+## Şekiller (İP6)
+
+`python -m src.plots` ile mevcut sonuç dosyalarından üretilir (model veya GPU gerekmez), 300 dpi, `results/figures/`:
+
+| Dosya | İçerik |
+|---|---|
+| `1_egitim_egrileri.png` | Eğitim kaybı bileşenleri (0.4·MSE, 0.6·Focal), doğrulama AUROC (MAE ve 1D-ResNet), doğrulama R² |
+| `2_kopma_f1.png` | 0–4 rastgele ve 3 kritik duvar kopmasında F1: MAE ve 1D-ResNet, hedef 0.88 |
+| `3_yanlis_negatif.png` | Senaryo başına ve havuzlanmış yanlış negatif oranı (hipotez); kritik Anterior istisnası açıklamalı |
+| `4_rekonstruksiyon_r2.png` | Kopan kanalların R²'si: gerçekçi, Einthoven ile, oracle; hedef 0.80 |
+| `5_gurultu_f1.png` | Üç gerçek gürültü türünde SNR'a göre F1: MAE ve 1D-ResNet |
+
 ## Dosyalar ve yeniden üretme
 
 | Dosya | İçerik |
