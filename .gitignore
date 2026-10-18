@@ -8,6 +8,7 @@ __pycache__/
 # Veri (PTB-XL ~3 GB, önişlenmiş önbellek ~1 GB; yeniden üretilebilir)
 data/ptbxl/
 data/processed*/
+data/nstdb/
 
 # Sistem / araç
 .DS_Store

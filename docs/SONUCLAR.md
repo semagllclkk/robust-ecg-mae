@@ -92,6 +92,40 @@ Raporun İP6 kapsamında ("modelin optimizasyonu") denenebilecekler:
 - Sınıflandırma ve rekonstrüksiyon için ayrı checkpoint seçimi, ya da Focal başlığına daha güçlü düzenlileştirme (dropout, ağırlık sönümü).
 - Rapordaki α/β (0.4/0.6) sabit tutularak yalnızca eğitim süresi ve öğrenme oranı ayarı.
 
+## Gürültülü derivasyon stres testi
+
+Raporun amacı (Md. 1.2), 1–4 derivasyonun "tamamen koptuğu **veya parazitlendiği**" koşullarda tanı başarımını korumaktır. Kopma testlerine ek olarak gürültü testi yapıldı (`python -m src.noise_test`).
+
+- **Gürültü kaynağı:** MIT-BIH Noise Stress Test Database'in (PhysioNet) gerçek gürültü kayıtları:
+  - taban kayması (solunum, hareket)
+  - kas artefaktı (tremor)
+  - elektrot hareketi
+- **Gürültü nasıl eklendi:** Ham sinyalde rastgele 1–4 derivasyona, 12 / 6 / 0 dB SNR'da eklendi. Ardından raporun ön işleme hattı uygulandı. 0 dB, gürültünün sinyal kadar güçlü olduğu anlamına gelir.
+- **Sisteme ne bildirildi:** Hangi kanalların parazitli olduğu sisteme bildirilmedi; gerçek saha koşulu bu.
+- **Toplam:** 36 senaryo, aynı dengeli test seti (550 MI + 550 Normal).
+
+**F1 (1–4 parazitli kanal ortalaması):**
+
+| Gürültü | SNR | MAE | 1D-ResNet |
+|---|---|---|---|
+| Gürültüsüz | – | 0.928 | 0.866 |
+| Taban kayması | 12 / 6 / 0 dB | 0.928 / 0.926 / 0.925 | 0.865 / 0.866 / 0.866 |
+| Kas artefaktı | 12 / 6 / 0 dB | 0.927 / 0.920 / 0.919 | 0.866 / 0.865 / 0.867 |
+| Elektrot hareketi | 12 / 6 / 0 dB | 0.923 / 0.917 / **0.890** | 0.867 / 0.868 / 0.870 |
+
+Grafikler: `results/noise/noise_f1.png`, `results/noise/noise_example.png`. Tüm senaryolar: `results/noise/noise_results.json`.
+
+**Sonuç:**
+1. **36 senaryonun 35'inde MAE F1'i > 0.88.** Taban kayması ve kas artefaktında başarım neredeyse hiç düşmüyor (en fazla −0.009). Raporun 0.5–45 Hz filtresi taban kaymasının büyük kısmını zaten temizliyor (`noise_example.png`).
+2. **Tek istisna en ağır senaryo:** Elektrot hareketi, 0 dB, 4 parazitli kanal. Burada F1 **0.853**'e düşüyor ve 1D-ResNet'in (0.874) altında kalıyor. Ancak düşüşün nedeni yanlış negatif değil, yanlış pozitif:
+   - MAE'nin duyarlılığı 0.962'de kalıyor; MI kaçırmıyor.
+   - Özgüllüğü 0.707'ye düşüyor; elektrot hareketi ST değişikliğine benzediği için Normal kayıtların bir kısmına MI diyor.
+   - Yanlış negatif oranı MAE'de 0.038, 1D-ResNet'te 0.189. Yani raporun hipotezindeki yanlış negatif üstünlüğü bu senaryoda da korunuyor.
+3. **Ek analiz: gürültülü kanal tespiti.** Her derivasyon diğerlerinden MAE ile yeniden üretildi; gözlenen sinyalle uyuşmayan derivasyonlar maskelendi.
+   - Parazitli kanalların yalnızca %1–19'u yakalandı; F1'e katkısı ihmal edilebilir.
+   - Parazitli kanallar kusursuz bilinip maskelenseydi ("oracle"), F1 hafif ve orta gürültüde biraz düşerdi (gürültülü kanal hâlâ işe yarar bilgi taşıyor). Yalnızca ağır elektrot hareketinde yükselirdi: 0.853'ten 0.911'e.
+   - Sonuç: ayrı bir gürültü tespit adımı ancak ağır elektrot hareketi için anlamlı. Daha iyi bir sinyal kalitesi göstergesi (SQI), İP6 optimizasyonu ya da raporun "Yeni Proje" bölümündeki gürültü çalışmaları kapsamında ele alınabilir.
+
 ## Dosyalar ve yeniden üretme
 
 | Dosya | İçerik |
@@ -101,8 +135,10 @@ Raporun İP6 kapsamında ("modelin optimizasyonu") denenebilecekler:
 | `results/reconstruction_*.png` | Rekonstrüksiyon grafikleri |
 
 ```bash
+# Gürültü testi için önce NSTDB: python -c "import wfdb; wfdb.dl_database('nstdb', 'data/nstdb', records=['bw','em','ma'])"
 python -m src.prepare_data                     # İP1: ~2 dk
 python -m src.train                            # İP3: MAE, ~2 saat (M3)
 python -m src.train --arch resnet1d            # karşılaştırma, ~5 dk
 python -m src.evaluate --baseline models/resnet1d_baseline.pth
+python -m src.noise_test --baseline models/resnet1d_baseline.pth   # gürültü testi, ~70 dk (M3)
 ```
