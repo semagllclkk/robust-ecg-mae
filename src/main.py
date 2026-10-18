@@ -20,6 +20,7 @@ from src.ecg_constants import (FS, LEAD_NAMES, SEQ_LEN, WALL_GROUPS, WALL_LEAD_I
                                WALL_TO_ARTERY, WALL_TO_SUBCLASS)
 from src.model import ECGMaskedAutoencoder
 from src.clinical_report import build_clinical_pdf
+from src.report_text import build_narrative
 from src.einthoven import einthoven_complete
 from src.preprocessing import preprocess_ecg
 from src.st_analysis import MV_PER_MM, st_deviation_mv
@@ -454,6 +455,7 @@ def ui_predict(req: UILeadState):
         "reconstruction": {str(i): ("einthoven" if LEAD_NAMES[i] in r["einthoven_completed_leads"] else "mae")
                            for i in req.disconnectedLeads},
         "reconstructionSources": r["reconstruction_sources"],
+        "report": build_narrative(r),                    # hekim yorumu, hasta notu, uyarı (model çıktısından)
         "modelSource": MODEL_SOURCE,
         "ecgId": r["ecg_id"],
         "groundTruth": r["ground_truth"],

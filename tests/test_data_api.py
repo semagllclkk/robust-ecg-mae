@@ -110,6 +110,10 @@ def test_ui_contract_for_dashboard():
         assert set(p["wallProbabilities"]) == {"anterior", "inferior", "lateral"}
         assert p["region"] in (None, "anterior", "inferior", "lateral")
         assert p["reconstruction"] == {"6": "mae", "7": "mae"}
+        rep = p["report"]                                                     # rapor metinleri modelden
+        assert rep["summary"] and rep["patient"] and rep["clinician"] and rep["confidenceNote"]
+        assert any("V1" in t and "V2" in t for t in rep["clinician"])          # kopuk kanallar ve kaynakları
+        assert (rep["warning"] is not None) == (p["confidence"] < 0.70)
         lim = c.post("/api/predict", json={"condition": "inf", "disconnectedLeads": [1, 2, 5]}).json()
         assert lim["reconstruction"] == {"1": "einthoven", "2": "einthoven", "5": "einthoven"}
 

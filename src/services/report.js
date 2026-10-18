@@ -13,7 +13,15 @@ export function openReport({ scenario, disconnectedLeads, prediction }) {
   const timestamp = new Date().toLocaleString('tr-TR');
   const predLabel = prediction?.label ?? '–';
   const predConf = prediction ? `%${Math.round(prediction.confidence * 100)}` : '–';
-  const predST = prediction?.region ? `+${prediction.stDeviation.toFixed(1)} mm` : '–';
+  const signed = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}`;
+  const predST = prediction?.region ? `${signed(prediction.stDeviation)} mm` : '–';
+  const narrative = prediction?.report; // backend: model çıktısından üretilen hekim/hasta metinleri (Mock'ta yok)
+  const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  const list = (items) => `<ul>${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
+  const truth = prediction?.groundTruth;
+  const truthText = truth
+    ? `${truth.label}${truth.mi_walls?.length ? ` (${truth.mi_walls.join(', ')})` : ''}`
+    : null;
   const wallRows = prediction
     ? Object.entries(WALLS)
         .map(
@@ -25,7 +33,7 @@ export function openReport({ scenario, disconnectedLeads, prediction }) {
         .join('')
     : '';
   const stRow = prediction
-    ? LEADS.map((lead, i) => `<td>${lead.name}<br>${prediction.stByLead[i].toFixed(1)}</td>`).join('')
+    ? LEADS.map((lead, i) => `<td>${lead.name}<br>${signed(prediction.stByLead[i])}</td>`).join('')
     : '';
   const reconText =
     disconnectedLeads
@@ -49,18 +57,26 @@ td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
 th { background: #f0f0f0; font-weight: 600; }
 .badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 4px; padding: 2px 8px; font-weight: 600; }
 .warn { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.alert { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 6px; padding: 10px 14px; font-weight: 600; margin-top: 12px; }
+.summary { font-size: 14px; font-weight: 600; margin: 12px 0 0; }
+.note { font-size: 11px; color: #666; margin-top: 6px; }
+.patient { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 4px 16px; }
+ul { margin: 8px 0; padding-left: 20px; } li { margin: 4px 0; line-height: 1.45; }
 footer { margin-top: 40px; font-size: 11px; color: #888; border-top: 1px solid #ddd; padding-top: 8px; }
 @media print { button { display: none; } }
 </style>
 </head>
 <body>
 <h1>EKG Klinik Karar Destek Raporu</h1>
-<p><strong>Tarih/Saat:</strong> ${timestamp}</p>
+<p><strong>Tarih/Saat:</strong> ${timestamp}${prediction?.ecgId ? ` · <strong>Kayıt:</strong> PTB-XL #${prediction.ecgId}` : ''}</p>
+${narrative ? `<p class="summary">${esc(narrative.summary)}</p>` : ''}
+${narrative?.warning ? `<div class="alert">⚠ ${esc(narrative.warning)}</div>` : ''}
 
 <h2>Model Tahmini</h2>
 <table>
 <tr><th>Tanı</th><td><span class="badge ${prediction?.region ? 'warn' : ''}">${predLabel}</span></td></tr>
 <tr><th>Model Güveni</th><td>${predConf}</td></tr>
+${prediction?.miProbability !== undefined ? `<tr><th>MI Olasılığı</th><td>%${Math.round(prediction.miProbability * 100)}</td></tr>` : ''}
 <tr><th>ST Sapması</th><td>${predST}</td></tr>
 <tr><th>Şüpheli Arter</th><td>${prediction?.artery ?? '–'}</td></tr>
 <tr><th>Model Kaynağı</th><td>${prediction?.modelSource ?? '–'}</td></tr>
@@ -68,6 +84,9 @@ footer { margin-top: 40px; font-size: 11px; color: #888; border-top: 1px solid #
 
 <h2>Duvar Olasılıkları</h2>
 <table>${wallRows}</table>
+${narrative ? `<p class="note">${esc(narrative.confidenceNote)}</p>` : ''}
+
+${narrative ? `<h2>Hekim İçin Değerlendirme (Açıklanabilir Yapay Zekâ)</h2>${list(narrative.clinician)}` : ''}
 
 <h2>Derivasyon Bazında ST Sapması (mm)</h2>
 <table><tr>${stRow}</tr></table>
@@ -79,8 +98,10 @@ footer { margin-top: 40px; font-size: 11px; color: #888; border-top: 1px solid #
 <tr><th>Rekonstrüksiyon</th><td>${reconText}</td></tr>
 </table>
 
+${narrative ? `<h2>Hasta ve Hasta Yakını İçin Açıklama</h2><div class="patient">${list(narrative.patient)}</div>` : ''}
+
 <h2>Senaryo</h2>
-<p>${scenarioLabel}</p>
+<p>${scenarioLabel}${truthText ? ` · Demo kaydının gerçek etiketi (PTB-XL): ${esc(truthText)}` : ''}</p>
 
 <footer>
 Bu rapor EKG İzleme Paneli tarafından otomatik üretilmiştir. Araştırma prototipidir;
