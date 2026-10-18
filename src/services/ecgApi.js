@@ -283,6 +283,8 @@ async function post(path, body) {
 const httpApi = {
   chunk: (params) => post('/chunk', params),
   predict: (params) => post('/predict', params),
+  // Aynı senaryodan başka bir PTB-XL test kaydına geç (yalnızca gerçek backend)
+  newRecord: (params) => post('/new-record', params),
 };
 
 /* ------------------------------------------------------------- seçici */
@@ -333,6 +335,11 @@ async function call(method, params) {
 export const api = {
   chunk: (params) => call('chunk', params),
   predict: (params) => call('predict', params),
+  newRecord: async (params) => {
+    await ready;
+    if (state.mode !== 'fastapi') throw new Error('Yeni hasta yalnızca FastAPI backend ile seçilebilir');
+    return httpApi.newRecord(params);
+  },
   subscribe(listener) {
     listeners.add(listener);
     listener({ ...state });

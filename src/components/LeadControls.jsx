@@ -75,9 +75,22 @@ export function LeadPanel({ disconnectedLeads, maxDisconnected, notice, onToggle
   );
 }
 
-export function ScenarioPanel({ scenario, onScenarioChange }) {
+export function ScenarioPanel({ scenario, onScenarioChange, onNewPatient, canChangePatient, changingPatient, ecgId }) {
   return (
-    <Panel meta="Sinyal kaynağı" title="Senaryo">
+    <Panel
+      actions={
+        <Button
+          disabled={!canChangePatient || changingPatient}
+          onClick={onNewPatient}
+          title={canChangePatient ? 'Aynı senaryodan başka bir PTB-XL test kaydı' : 'Gerçek backend gerekli'}
+          variant="ghost"
+        >
+          {changingPatient ? 'Yükleniyor…' : 'Yeni hasta'}
+        </Button>
+      }
+      meta={ecgId != null ? <span className="num">#{ecgId}</span> : 'Sinyal kaynağı'}
+      title="Senaryo"
+    >
       <div className="flex flex-col gap-1" role="radiogroup">
         {SCENARIOS.map((option) => {
           const active = option.value === scenario;

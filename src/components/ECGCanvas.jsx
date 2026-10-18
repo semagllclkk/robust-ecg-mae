@@ -17,6 +17,7 @@ const PAPER = { bg: '#fffbfa', minor: '#f7dcdc', major: '#eeb4b4', ink: '#1d2127
 
 export default function ECGCanvas({
   disconnectedLeads,
+  recordKey = 0,
   scenario,
   onApiStatusChange,
 }) {
@@ -26,10 +27,10 @@ export default function ECGCanvas({
 
   latestProps.current = { disconnectedLeads, scenario };
 
-  // Senaryo veya kopuk kanal kümesi değişince görünen 10 s'lik pencere yeniden alınır
+  // Senaryo, hasta kaydı veya kopuk kanal kümesi değişince görünen 10 s'lik pencere yeniden alınır
   useEffect(() => {
     refetchRef.current = true;
-  }, [disconnectedLeads, scenario]);
+  }, [disconnectedLeads, scenario, recordKey]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
