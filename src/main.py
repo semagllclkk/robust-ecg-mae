@@ -10,8 +10,15 @@ import pandas as pd
 import os
 import io
 import random
+import sys
 import threading
 import time
+
+# Windows'ta çıktı yönlendirildiğinde (servis, IDE, log dosyası) konsol kodlaması cp1254 olur ve
+# ✓ / ⚠ gibi karakterler UnicodeEncodeError ile servisi açılışta çökertir.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -56,12 +63,13 @@ MODEL_SOURCE = "MAE (eğitilmemiş)"
 if os.path.exists(MODEL_PATH):
     try:
         model, _ckpt = load_checkpoint(MODEL_PATH, device)
-        MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
-        MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
-        print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f})")
     except Exception as e:
         print(f"⚠ Uyarı: Checkpoint yeni model mimarisiyle uyumsuz ({type(e).__name__}). "
               "`python -m src.train` ile yeniden eğitin. Eğitilmemiş ağırlıklarla (mock) çalışılıyor.")
+    else:
+        MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
+        MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
+        print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f})")
 else:
     print("⚠ Uyarı: Model ağırlık dosyası bulunamadı. Eğitilmemiş ağırlıklarla (mock) çalışılıyor.")
 
