@@ -2,9 +2,15 @@
 
 Çift başlıklı MAE (İP3), raporun Md. 2.1–2.4 maddelerine birebir uygun biçimde eğitildi. Bu belgede test sonuçları ve rapor hedefleriyle karşılaştırması var.
 
-- **Test seti:** PTB-XL strat_fold 10, dengeli alt küme: 550 MI + 550 Normal. Model bu kayıtları eğitimde hiç görmedi.
+- **Test seti:** PTB-XL strat_fold 10, dengeli alt küme (Rapor Md. 2.1): 550 MI + 550 Normal. Model bu kayıtları eğitimde hiç görmedi; hiçbir hasta birden fazla bölümde yer almıyor. Not: F1 sınıf oranına bağlıdır. MI'ın daha seyrek olduğu gerçek popülasyonda F1 daha düşük çıkar; AUROC, duyarlılık ve özgüllük bu orandan etkilenmez.
 - **Karar eşiği:** Doğrulama setinde (fold 9) belirlendi; test setine dokunulmadı.
 - **Karşılaştırma modeli:** Klasik 1D-ResNet [1]. Aynı veriyle, LeadDropout olmadan eğitildi.
+
+## Düzeltme notu (18.10.2026)
+
+Bu belgenin önceki sürümü rekonstrüksiyonu (RMSE, R²) **iyimser** hesaplıyordu. Kopan kanalın tahmini mV'a çevrilirken o kanalın gerçek genliği (σ) kullanılmıştı. Gerçekte kopan bir kanalın genliği bilinemez. Model kopan kanalın **şeklini** doğru üretiyor (Pearson r 0.93–0.96), ama **genliğini** bilemiyor; nedeni raporun istediği derivasyon bazlı z-score (Md. 2.1), çünkü her kanal kendi genliğine bölünüyor.
+
+Artık ana sonuçlar **gerçekçi koşulda** veriliyor: kopan kanalın genliği yerine eğitim popülasyonunun değeri kullanılıyor; API de böyle çalışıyor. Eski hesap "oracle" sütununda yalnızca karşılaştırma için duruyor. Teşhis sonuçları (F1, FNR, AUROC) bu düzeltmeden etkilenmiyor.
 
 ## Rapor hedefleri
 
@@ -13,27 +19,32 @@ Değerler 15 epoch'luk ana modele aittir: `models/mae_ecg_checkpoint.pth`. 30 ep
 | Hedef (Rapor) | Sonuç | Durum |
 |---|---|---|
 | 1–4 kanal koptuğunda F1 > %88 (Hedef 4, İP5) | Rastgele kopma: **0.915–0.927**. Kritik kopma: Lateral 0.914, Anterior 0.878, Inferior 0.872 | Rastgele kopmada ✓, iki kritik senaryoda sınırda ✗ |
-| RMSE < 0.15 (Hedef 4, İP3) | En kötü durum **0.149 mV** (kritik Anterior); rastgele kopmada ≤ 0.070 mV | ✓ |
-| R² > 0.80 (Hedef 4, Hipotez) | Rastgele kopma: **0.877–0.914**. Lateral 0.890. Inferior: MAE 0.848, Einthoven ile **1.000**. Anterior **0.700** | Anterior dışında ✓ |
-| Pearson r (Hipotez) | Rastgele: 0.934–0.955, kritik: 0.828–0.942 | ✓ |
+| RMSE < 0.15 (Hedef 4, İP3) | Rastgele kopma: **0.093–0.104 mV**. Kritik Anterior: **0.173 mV** | Rastgele ✓, kritik Anterior ✗ |
+| R² > 0.80 (Hedef 4, Hipotez) | Saf MAE: **0.62–0.64** (Anterior 0.49). MAE + Einthoven: rastgele **0.79–0.80**, Lateral 0.81, Inferior **1.00**, Anterior 0.49 | ✗ (Einthoven ile sınırda) |
+| Pearson r (Hipotez: "yüksek korelasyonla") | Rastgele: **0.93–0.96**, kritik: 0.83–0.94 | ✓ |
 | Klasik mimariye göre yanlış negatif ≥ %25 azalma (Hipotez) | **%46.5** (havuzlanmış FNR: MAE 0.098, 1D-ResNet 0.184) | ✓ |
 | Eğitilmiş .pth ağırlıkları (İP3 başarı ölçütü) | `models/mae_ecg_checkpoint.pth` | ✓ |
-| Çıkarım < 50 ms (Risk 2) | ~22 ms (M3, MPS) | ✓ |
+| Çıkarım < 50 ms (Risk 2) | ~13–22 ms (M3, MPS) | ✓ |
+
+**Genlik sorununun çözümü için** model, sağlam kanalların genliğini de girdi olarak alıp rekonstrüksiyonu gerçek ölçekte yapacak şekilde yeniden eğitiliyor. Rapordaki z-score girdisi ve kayıp formülü (0.4·MSE + 0.6·Focal) aynı kalıyor. Sonuçlar gelince bu belge güncellenecek.
 
 ## Tam test tablosu (çift başlıklı MAE)
 
-| Senaryo | AUROC | F1 | Duyarlılık | Özgüllük | FNR | Kriz tipi AUROC | RMSE (mV) | R² | r |
-|---|---|---|---|---|---|---|---|---|---|
-| 0 kopuk (12 kanal) | 0.976 | 0.928 | 0.925 | 0.931 | 0.075 | 0.954 | – | – | – |
-| Rastgele 1 kanal | 0.976 | 0.927 | 0.927 | 0.927 | 0.073 | 0.952 | 0.057 | 0.914 | 0.955 |
-| Rastgele 2 kanal | 0.973 | 0.918 | 0.911 | 0.927 | 0.089 | 0.949 | 0.059 | 0.908 | 0.952 |
-| Rastgele 3 kanal | 0.973 | 0.917 | 0.909 | 0.927 | 0.091 | 0.949 | 0.064 | 0.895 | 0.945 |
-| Rastgele 4 kanal | 0.970 | 0.915 | 0.916 | 0.913 | 0.084 | 0.946 | 0.070 | 0.877 | 0.934 |
-| Kritik Anterior (V1–V4) | 0.945 | 0.878 | 0.880 | 0.875 | 0.120 | 0.900 | 0.149 | 0.700 | 0.828 |
-| Kritik Inferior (II, III, aVF) | 0.942 | 0.872 | 0.855 | 0.895 | 0.145 | 0.889 | 0.042 → **0.001** | 0.848 → **1.000** | 0.919 → **1.000** |
-| Kritik Lateral (I, aVL, V5, V6) | 0.970 | 0.914 | 0.913 | 0.916 | 0.087 | 0.924 | 0.068 → 0.064 | 0.890 → 0.935 | 0.942 → 0.965 |
+Rekonstrüksiyon sütunları yalnızca kopan kanallar üzerinden, mV cinsinden.
+- **Gerçekçi:** genlik bilinmeden; ana sonuç.
+- **+Einthoven:** kopan ekstremite kanalları Einthoven bağıntılarıyla hesaplanmış (Risk 1 B planı).
+- **Oracle:** genlik biliniyormuş gibi; yalnızca karşılaştırma için.
 
-Okun sağındaki değerler: MAE + Einthoven kısıtı (Risk 1 B planı).
+| Senaryo | AUROC | F1 | Duyarlılık | Özgüllük | FNR | Kriz tipi AUROC | RMSE (mV) | R² | r | +Einthoven RMSE / R² | Oracle R² |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 kopuk (12 kanal) | 0.976 | 0.928 | 0.925 | 0.931 | 0.075 | 0.954 | – | – | – | – | – |
+| Rastgele 1 kanal | 0.976 | 0.927 | 0.927 | 0.927 | 0.073 | 0.952 | 0.093 | 0.637 | 0.955 | 0.082 / 0.787 | 0.914 |
+| Rastgele 2 kanal | 0.973 | 0.918 | 0.911 | 0.927 | 0.089 | 0.949 | 0.100 | 0.637 | 0.952 | 0.089 / 0.800 | 0.908 |
+| Rastgele 3 kanal | 0.973 | 0.917 | 0.909 | 0.927 | 0.091 | 0.949 | 0.102 | 0.631 | 0.945 | 0.092 / 0.800 | 0.895 |
+| Rastgele 4 kanal | 0.970 | 0.915 | 0.916 | 0.913 | 0.084 | 0.946 | 0.104 | 0.616 | 0.934 | 0.093 / 0.795 | 0.877 |
+| Kritik Anterior (V1–V4) | 0.945 | 0.878 | 0.880 | 0.875 | 0.120 | 0.900 | 0.173 | 0.494 | 0.828 | 0.173 / 0.494 | 0.700 |
+| Kritik Inferior (II, III, aVF) | 0.942 | 0.872 | 0.855 | 0.895 | 0.145 | 0.889 | 0.077 | 0.606 | 0.919 | **0.001 / 1.000** | 0.848 |
+| Kritik Lateral (I, aVL, V5, V6) | 0.970 | 0.914 | 0.913 | 0.916 | 0.087 | 0.924 | 0.089 | 0.628 | 0.942 | 0.077 / 0.811 | 0.890 |
 
 ## Yanlış negatif karşılaştırması (1D-ResNet → MAE)
 
@@ -55,8 +66,8 @@ Okun sağındaki değerler: MAE + Einthoven kısıtı (Risk 1 B planı).
 ## Yorum
 
 1. **Kopmaya dayanıklılık kanıtlandı.** 12 kanaldan 4 rastgele kanal kopmasına geçildiğinde MAE'nin F1'i yalnızca 0.928'den 0.915'e düşüyor. 1D-ResNet'inki 0.866'dan 0.854'e düşüyor, ama zaten her koşulda MAE'nin 6–7 puan altında.
-2. **En zor durum kritik Anterior kopması.** V1–V4'ün dördü birden gidince kalan V5–V6 ve ekstremite derivasyonları sağ prekordiyal bölgeyi tam temsil edemiyor (R² 0.70). Grafik: `results/reconstruction_anterior.png`.
-3. **Einthoven kısıtı (Risk 1 B planı) ekstremite derivasyonlarını tam çözüyor.** Kritik Inferior kopmasında R² 0.848'den 1.000'e çıkıyor. Grafik: `results/reconstruction_inferior_einthoven.png`. Göğüs derivasyonlarına bu kısıt uygulanamıyor; onlar fiziksel olarak bağımsız.
+2. **En zor durum kritik Anterior kopması.** V1–V4'ün dördü birden gidince kalan V5–V6 ve ekstremite derivasyonları sağ prekordiyal bölgeyi tam temsil edemiyor (gerçekçi R² 0.49, oracle 0.70). Grafik: `results/reconstruction_anterior.png`.
+3. **Einthoven kısıtı (Risk 1 B planı) ekstremite derivasyonlarını tam çözüyor.** Kritik Inferior kopmasında R² 0.606'dan 1.000'e çıkıyor; genlik de fizik kuralından geldiği için genlik sorunu ekstremite kanallarında hiç yok. Grafik: `results/reconstruction_inferior_einthoven.png`. Göğüs derivasyonlarına bu kısıt uygulanamıyor; onlar fiziksel olarak bağımsız.
 4. **Kriz tipi ayrımı güçlü.** Anterior/Inferior/Lateral MI ayrımında AUROC 0.95. Lateral MI test setinde yalnızca 20 kayıt olduğu için o değer daha az güvenilir.
    API, P(duvar ∣ MI) ≥ 0.5 olan tüm duvarları raporlar. MI test kayıtlarının %19'unda birden fazla duvar etkilenmiştir. Yalnızca en olası duvarı yazmaya göre:
 
@@ -76,9 +87,11 @@ Okun sağındaki değerler: MAE + Einthoven kısıtı (Risk 1 B planı).
 | Test F1, rastgele 1–4 kopma | **0.915–0.927** | 0.910–0.914 |
 | Test F1, kritik Anterior / Inferior / Lateral | 0.878 / **0.872** / **0.914** | **0.882** / 0.864 / 0.902 |
 | Yanlış negatif azalması (havuzlanmış) | **%46.5** | %28.9 |
-| R², rastgele 1–4 kopma | 0.877–0.914 | **0.897–0.928** |
-| R², kritik Anterior / Inferior / Lateral | 0.700 / 0.848 / 0.890 | **0.718 / 0.898 / 0.909** |
-| En yüksek RMSE | 0.149 mV | **0.143 mV** |
+| R² (oracle), rastgele 1–4 kopma | 0.877–0.914 | **0.897–0.928** |
+| R² (oracle), kritik Anterior / Inferior / Lateral | 0.700 / 0.848 / 0.890 | **0.718 / 0.898 / 0.909** |
+| En yüksek RMSE (oracle) | 0.149 mV | **0.143 mV** |
+
+Bu karşılaştırma düzeltme notundan önce yapıldığı için rekonstrüksiyon satırları oracle hesabıdır; iki model arasındaki fark yönü değişmez.
 
 **Karar:** Ana model 15 epoch'luk modeldir. Seçim, raporun yöntemine uygun olarak doğrulama setine göre yapıldı; test sonuçları da aynı yönü gösteriyor.
 
@@ -100,7 +113,7 @@ Raporun amacı (Md. 1.2), 1–4 derivasyonun "tamamen koptuğu **veya parazitlen
   - taban kayması (solunum, hareket)
   - kas artefaktı (tremor)
   - elektrot hareketi
-- **Gürültü nasıl eklendi:** Ham sinyalde rastgele 1–4 derivasyona, 12 / 6 / 0 dB SNR'da eklendi. Ardından raporun ön işleme hattı uygulandı. 0 dB, gürültünün sinyal kadar güçlü olduğu anlamına gelir.
+- **Gürültü nasıl eklendi:** Ham sinyalde rastgele 1–4 derivasyona, 12 / 6 / 0 dB SNR'da eklendi. Ardından raporun ön işleme hattı uygulandı. SNR filtre **öncesinde** tanımlıdır: 0 dB, ham kayıtta gürültünün sinyal kadar güçlü olduğu anlamına gelir. Taban kaymasının büyük kısmı 0.5 Hz altında olduğundan filtre sonrası etkin SNR çok daha yüksektir; elektrot hareketi ve kas artefaktı ise EKG bandıyla örtüştüğü için filtreden büyük ölçüde geçer.
 - **Sisteme ne bildirildi:** Hangi kanalların parazitli olduğu sisteme bildirilmedi; gerçek saha koşulu bu.
 - **Toplam:** 36 senaryo, aynı dengeli test seti (550 MI + 550 Normal).
 

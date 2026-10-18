@@ -20,12 +20,12 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from src.dataset import PTBXLProcessedDataset
+from src.dataset import PTBXLProcessedDataset, population_sigma
 from src.ecg_constants import LEAD_NAMES, WALL_GROUPS, WALL_NAMES
 from src.einthoven import einthoven_complete
 from src.losses import MultiTaskLoss
 from src.lead_dropout import random_keep_mask, wall_keep_mask
-from src.train import BASELINE_PATH, CHECKPOINT_PATH, evaluate, get_device, load_checkpoint
+from src.train import BASELINE_PATH, CHECKPOINT_PATH, evaluate, get_device, load_checkpoint, model_forward
 
 TARGET_F1 = 0.88
 TARGET_RMSE = 0.15
@@ -54,35 +54,32 @@ def run_all(model, ckpt, loader, device):
 
 def print_table(title, results):
     print(f"\n=== {title} ===")
+    print("Rekonstrüksiyon (kopan kanallar, mV): gerçekçi = kopan kanalın genliği bilinmeden (API ile aynı); "
+          "+Einthoven = Risk 1 B planı; oracle = genlik biliniyormuş gibi (yalnızca karşılaştırma)")
     print(f"{'senaryo':38s} | {'AUROC':>6} {'F1':>6} {'Duyar.':>6} {'Özgül.':>6} {'FNR':>6} {'DuvarAUC':>8} | "
-          f"{'RMSE(z)':>7} {'RMSE(mV)':>8} {'R²':>6} {'r':>6} | {'+Einthoven: RMSE(mV)':>20} {'R²':>6} {'r':>6}")
+          f"{'RMSE':>6} {'R²':>6} {'r':>6} | {'+Ein RMSE':>9} {'R²':>6} | {'oracle R²':>9}")
     for name, r in results.items():
-        if np.isnan(r["rmse_z"]):
-            rec = f"{'-':>7} {'-':>8} {'-':>6} {'-':>6} | {'-':>20} {'-':>6} {'-':>6}"
+        if np.isnan(r["rmse_mv"]):
+            rec = f"{'-':>6} {'-':>6} {'-':>6} | {'-':>9} {'-':>6} | {'-':>9}"
         else:
-            rec = (f"{r['rmse_z']:7.4f} {r['rmse_mv']:8.4f} {r['r2']:6.3f} {r['pearson_r']:6.3f} | "
-                   f"{r['ein_rmse_mv']:20.4f} {r['ein_r2']:6.3f} {r['ein_pearson_r']:6.3f}")
+            oracle = f"{r['oracle_r2']:9.3f}" if not np.isnan(r.get("oracle_r2", float("nan"))) else f"{'-':>9}"
+            rec = (f"{r['rmse_mv']:6.4f} {r['r2']:6.3f} {r['pearson_r']:6.3f} | "
+                   f"{r['ein_rmse_mv']:9.4f} {r['ein_r2']:6.3f} | {oracle}")
         print(f"{name:38s} | {r['auroc']:6.4f} {r['f1']:6.4f} {r['sens']:6.4f} {r['spec']:6.4f} {r['fnr']:6.4f} "
               f"{r['wall_auroc_macro']:8.4f} | {rec}")
 
 
 def check_targets(results, baseline=None):
-    print("\n=== Rapor hedefleri (1–4 kanal kopması) ===")
+    print("\n=== Rapor hedefleri (1–4 kanal kopması; rekonstrüksiyon gerçekçi koşulda) ===")
     drop = {k: v for k, v in results.items() if not k.startswith("0 kopuk")}
-    min_f1 = min(r["f1"] for r in drop.values())
-    max_rmse_z = max(r["rmse_z"] for r in drop.values())
-    max_rmse_mv = max(r["rmse_mv"] for r in drop.values())
-    min_r2 = min(r["r2"] for r in drop.values())
     ok = lambda b: "✓" if b else "✗"
+    min_f1 = min(r["f1"] for r in drop.values())
     print(f"{ok(min_f1 > TARGET_F1)} En düşük F1 = {min_f1:.4f}  (hedef > {TARGET_F1})")
-    print(f"{ok(max_rmse_mv < TARGET_RMSE)} En yüksek RMSE = {max_rmse_mv:.4f} mV  (hedef < {TARGET_RMSE}; "
-          f"z-score biriminde {max_rmse_z:.4f})  [yalnızca MAE]")
-    print(f"{ok(min_r2 > TARGET_R2)} En düşük R² = {min_r2:.4f}  (hedef > {TARGET_R2})  [yalnızca MAE]")
-    if "ein_r2" in next(iter(drop.values())):
-        e_rmse = max(r["ein_rmse_mv"] for r in drop.values())
-        e_r2 = min(r["ein_r2"] for r in drop.values())
-        print(f"{ok(e_rmse < TARGET_RMSE)} En yüksek RMSE = {e_rmse:.4f} mV  [MAE + Einthoven kısıtı, Risk 1 B planı]")
-        print(f"{ok(e_r2 > TARGET_R2)} En düşük R² = {e_r2:.4f}  [MAE + Einthoven kısıtı, Risk 1 B planı]")
+    for prefix, label in [("", "MAE"), ("ein_", "MAE + Einthoven (Risk 1 B planı)")]:
+        rmse = max(r[f"{prefix}rmse_mv"] for r in drop.values())
+        r2 = min(r[f"{prefix}r2"] for r in drop.values())
+        print(f"{ok(rmse < TARGET_RMSE)} En yüksek RMSE = {rmse:.4f} mV  (hedef < {TARGET_RMSE})  [{label}]")
+        print(f"{ok(r2 > TARGET_R2)} En düşük R² = {r2:.4f}  (hedef > {TARGET_R2})  [{label}]")
     if baseline is not None:
         # Hipotez: 1–4 kanal koptuğunda yanlış negatif oranı. Tüm kopma senaryolarında havuzlanmış FNR
         # (toplam FN / toplam MI; senaryolarda MI sayısı eşit olduğundan FNR'lerin ortalaması) karşılaştırılır.
@@ -109,10 +106,12 @@ def plot_reconstruction(model, dataset, device, out_path, wall="Anterior", use_e
     x, target = dataset[idx]
     M = wall_keep_mask(1, wall).to(device)
     with torch.no_grad():
-        out = model(x.unsqueeze(0).to(device) * M.unsqueeze(-1), M)
+        tgt = {k: v.unsqueeze(0).to(device) for k, v in target.items()}
+        out = model_forward(model, x.unsqueeze(0).to(device) * M.unsqueeze(-1), M, tgt)
     mu, sigma = target["mu"].numpy()[:, None], target["sigma"].numpy()[:, None]
     orig = x.numpy() * sigma + mu
-    recon = out["recon"][0].float().cpu().numpy() * sigma + mu
+    # Gerçekçi: kopan kanalın genliği bilinmez, popülasyon σ kullanılır (API ile aynı)
+    recon = out["recon"][0].float().cpu().numpy() * population_sigma()[:, None]
     dropped = (M[0] < 0.5).cpu().numpy()
     label = "MAE rekonstrüksiyonu"
     if use_einthoven:

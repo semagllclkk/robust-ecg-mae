@@ -16,14 +16,15 @@
       "auroc_Inferior": 0.9696246623057829,
       "auroc_Lateral": 0.9241509433962265,
       "wall_auroc_macro": 0.9539731857572361,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "rastgele 1 kanal": {
       "loss": 0.08047581795189115,
@@ -41,14 +42,15 @@
       "auroc_Inferior": 0.9700429231634234,
       "auroc_Lateral": 0.9196698113207548,
       "wall_auroc_macro": 0.9519514608000584,
-      "rmse_z": 0.29358647300962787,
-      "rmse_mv": 0.05723517175219793,
-      "r2": 0.9138069748878479,
-      "pearson_r": 0.9547998905181885,
-      "ein_rmse_z": 0.24027413115699595,
-      "ein_rmse_mv": 0.05452400687650783,
-      "ein_r2": 0.9422683119773865,
-      "ein_pearson_r": 0.9693781137466431
+      "rmse_mv": 0.09299124592796927,
+      "r2": 0.6372306942939758,
+      "pearson_r": 0.9547998309135437,
+      "ein_rmse_mv": 0.08237659154641915,
+      "ein_r2": 0.7870258092880249,
+      "ein_pearson_r": 0.9693781137466431,
+      "oracle_rmse_mv": 0.0572351721763313,
+      "oracle_r2": 0.9138069748878479,
+      "oracle_pearson_r": 0.9547998309135437
     },
     "rastgele 2 kanal": {
       "loss": 0.08584272985657056,
@@ -66,14 +68,15 @@
       "auroc_Inferior": 0.9700223529573099,
       "auroc_Lateral": 0.9154245283018869,
       "wall_auroc_macro": 0.9487214094357684,
-      "rmse_z": 0.30347791955305414,
-      "rmse_mv": 0.05943662477123661,
-      "r2": 0.9079011678695679,
-      "pearson_r": 0.9517757892608643,
-      "ein_rmse_z": 0.23959427657916985,
-      "ein_rmse_mv": 0.056153912681885874,
-      "ein_r2": 0.9425945281982422,
-      "ein_pearson_r": 0.969595193862915
+      "rmse_mv": 0.09951627880643905,
+      "r2": 0.6373235583305359,
+      "pearson_r": 0.9517756700515747,
+      "ein_rmse_mv": 0.08926457362310582,
+      "ein_r2": 0.8002013564109802,
+      "ein_pearson_r": 0.969595193862915,
+      "oracle_rmse_mv": 0.05943662447950515,
+      "oracle_r2": 0.9079011678695679,
+      "oracle_pearson_r": 0.9517757892608643
     },
     "rastgele 3 kanal": {
       "loss": 0.09121288400557306,
@@ -91,14 +94,15 @@
       "auroc_Inferior": 0.9700086394865677,
       "auroc_Lateral": 0.9197169811320756,
       "wall_auroc_macro": 0.9491788712894674,
-      "rmse_z": 0.32369069596123745,
-      "rmse_mv": 0.06357328671988213,
-      "r2": 0.8952243328094482,
+      "rmse_mv": 0.10184678897844049,
+      "r2": 0.6314908862113953,
       "pearson_r": 0.9446073174476624,
-      "ein_rmse_z": 0.25200985472448334,
-      "ein_rmse_mv": 0.05974110753674636,
-      "ein_r2": 0.9364910125732422,
-      "ein_pearson_r": 0.9661224484443665
+      "ein_rmse_mv": 0.09145392871940372,
+      "ein_r2": 0.8000003099441528,
+      "ein_pearson_r": 0.9661224484443665,
+      "oracle_rmse_mv": 0.06357328686534812,
+      "oracle_r2": 0.8952243328094482,
+      "oracle_pearson_r": 0.9446073174476624
     },
     "rastgele 4 kanal": {
       "loss": 0.10157545738750035,
@@ -116,14 +120,15 @@
       "auroc_Inferior": 0.9645163944542724,
       "auroc_Lateral": 0.9216981132075471,
       "wall_auroc_macro": 0.9457048466019415,
-      "rmse_z": 0.3509324491599516,
-      "rmse_mv": 0.06945332627404302,
-      "r2": 0.876846432685852,
+      "rmse_mv": 0.10386811153923307,
+      "r2": 0.6158482432365417,
       "pearson_r": 0.9342952370643616,
-      "ein_rmse_z": 0.26801919426887627,
-      "ein_rmse_mv": 0.06499345549068414,
-      "ein_r2": 0.9281657338142395,
-      "ein_pearson_r": 0.961374819278717
+      "ein_rmse_mv": 0.0925456680674201,
+      "ein_r2": 0.79547119140625,
+      "ein_pearson_r": 0.961374819278717,
+      "oracle_rmse_mv": 0.06945332577472833,
+      "oracle_r2": 0.876846432685852,
+      "oracle_pearson_r": 0.9342952370643616
     },
     "kritik Anterior (V1, V2, V3, V4)": {
       "loss": 0.19202802826960882,
@@ -141,14 +146,15 @@
       "auroc_Inferior": 0.9487047626883888,
       "auroc_Lateral": 0.9040566037735849,
       "wall_auroc_macro": 0.899742288409929,
-      "rmse_z": 0.5480516386148511,
-      "rmse_mv": 0.14874395194118065,
-      "r2": 0.6996393799781799,
-      "pearson_r": 0.8282409906387329,
-      "ein_rmse_z": 0.5480516386148511,
-      "ein_rmse_mv": 0.14874395194118065,
-      "ein_r2": 0.6996393799781799,
-      "ein_pearson_r": 0.8282409906387329
+      "rmse_mv": 0.17335086150564083,
+      "r2": 0.4941807985305786,
+      "pearson_r": 0.8282409310340881,
+      "ein_rmse_mv": 0.17335086150564083,
+      "ein_r2": 0.4941807985305786,
+      "ein_pearson_r": 0.8282409310340881,
+      "oracle_rmse_mv": 0.14874395380634908,
+      "oracle_r2": 0.6996393799781799,
+      "oracle_pearson_r": 0.8282409310340881
     },
     "kritik Inferior (II, III, aVF)": {
       "loss": 0.1282949588365025,
@@ -166,14 +172,15 @@
       "auroc_Inferior": 0.8713676444371308,
       "auroc_Lateral": 0.8428773584905661,
       "wall_auroc_macro": 0.8885848106119574,
-      "rmse_z": 0.39044659979221136,
-      "rmse_mv": 0.04173976266407896,
-      "r2": 0.8475514650344849,
+      "rmse_mv": 0.0767846395085714,
+      "r2": 0.6059218049049377,
       "pearson_r": 0.9193088412284851,
-      "ein_rmse_z": 0.008387465627479523,
-      "ein_rmse_mv": 0.0006636544442642078,
+      "ein_rmse_mv": 0.0006636544459652072,
       "ein_r2": 0.999929666519165,
-      "ein_pearson_r": 0.9999696612358093
+      "ein_pearson_r": 0.9999696612358093,
+      "oracle_rmse_mv": 0.04173976266407896,
+      "oracle_r2": 0.8475514650344849,
+      "oracle_pearson_r": 0.9193088412284851
     },
     "kritik Lateral (I, aVL, V5, V6)": {
       "loss": 0.09910056698653433,
@@ -191,14 +198,15 @@
       "auroc_Inferior": 0.9623633795477298,
       "auroc_Lateral": 0.8460849056603774,
       "wall_auroc_macro": 0.9236489819581865,
-      "rmse_z": 0.3321280168149694,
-      "rmse_mv": 0.06747001020268223,
-      "r2": 0.8896909356117249,
+      "rmse_mv": 0.08908979996608318,
+      "r2": 0.6275899410247803,
       "pearson_r": 0.9415902495384216,
-      "ein_rmse_z": 0.25531067498321935,
-      "ein_rmse_mv": 0.06355776051189062,
-      "ein_r2": 0.9348164796829224,
-      "ein_pearson_r": 0.9650095701217651
+      "ein_rmse_mv": 0.07660923594749922,
+      "ein_r2": 0.8106685280799866,
+      "ein_pearson_r": 0.9650095701217651,
+      "oracle_rmse_mv": 0.06747001020268223,
+      "oracle_r2": 0.8896909356117249,
+      "oracle_pearson_r": 0.9415902495384216
     }
   },
   "resnet1d": {
@@ -218,14 +226,15 @@
       "auroc_Inferior": 0.9603337858778679,
       "auroc_Lateral": 0.9314622641509435,
       "wall_auroc_macro": 0.9458778004542626,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "rastgele 1 kanal": {
       "loss": 0.05890526022348139,
@@ -243,14 +252,15 @@
       "auroc_Inferior": 0.9521194169032241,
       "auroc_Lateral": 0.9192452830188679,
       "wall_auroc_macro": 0.9361721577332364,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "rastgele 2 kanal": {
       "loss": 0.06374361717866527,
@@ -268,14 +278,15 @@
       "auroc_Inferior": 0.9425131306482357,
       "auroc_Lateral": 0.9285377358490566,
       "wall_auroc_macro": 0.9341656929540066,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "rastgele 3 kanal": {
       "loss": 0.06885893560118145,
@@ -293,14 +304,15 @@
       "auroc_Inferior": 0.9352381344194401,
       "auroc_Lateral": 0.8990094339622641,
       "wall_auroc_macro": 0.9179848407338277,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "rastgele 4 kanal": {
       "loss": 0.07746385141379303,
@@ -318,14 +330,15 @@
       "auroc_Inferior": 0.9263586621137943,
       "auroc_Lateral": 0.8828301886792452,
       "wall_auroc_macro": 0.9041830795546782,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "kritik Anterior (V1, V2, V3, V4)": {
       "loss": 0.12613623713453612,
@@ -343,14 +356,15 @@
       "auroc_Inferior": 0.9390847629626582,
       "auroc_Lateral": 0.9082547169811321,
       "wall_auroc_macro": 0.8856131242657023,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "kritik Inferior (II, III, aVF)": {
       "loss": 0.09304461793767081,
@@ -368,14 +382,15 @@
       "auroc_Inferior": 0.8229865196582603,
       "auroc_Lateral": 0.782877358490566,
       "wall_auroc_macro": 0.8448458900233221,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     },
     "kritik Lateral (I, aVL, V5, V6)": {
       "loss": 0.06256391521957186,
@@ -393,20 +408,17 @@
       "auroc_Inferior": 0.9438707642517243,
       "auroc_Lateral": 0.8972641509433963,
       "wall_auroc_macro": 0.9271558685494504,
-      "rmse_z": NaN,
       "rmse_mv": NaN,
       "r2": NaN,
       "pearson_r": NaN,
-      "ein_rmse_z": NaN,
       "ein_rmse_mv": NaN,
       "ein_r2": NaN,
-      "ein_pearson_r": NaN
+      "ein_pearson_r": NaN,
+      "oracle_rmse_mv": NaN,
+      "oracle_r2": NaN,
+      "oracle_pearson_r": NaN
     }
   },
   "fnr_reduction": 0.465444287729196,
-  "threshold": 0.43999999999999995,
-  "fnr_pooled": {
-    "mae": 0.09844155844155845,
-    "resnet1d": 0.18415584415584416
-  }
+  "threshold": 0.43999999999999995
 }

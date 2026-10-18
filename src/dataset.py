@@ -55,3 +55,13 @@ class PTBXLProcessedDataset(Dataset):
 
     def positive_fraction(self):
         return float(self.labels.mean()) if len(self.labels) else 0.0
+
+
+def population_sigma(processed_dir="data/processed"):
+    """
+    Eğitim kümesinde derivasyon başına medyan z-score σ'sı (mV). Kopan bir derivasyonun gerçek genliği
+    bilinemeyeceğinden rekonstrüksiyonu mV'a çevirirken bu popülasyon değeri kullanılır (gerçekçi koşul).
+    """
+    meta = pd.read_csv(os.path.join(processed_dir, "meta.csv"))
+    sigma = np.load(os.path.join(processed_dir, "sigma.npy"))
+    return np.median(sigma[(meta["split"] == "train").to_numpy()], axis=0).astype(np.float32)

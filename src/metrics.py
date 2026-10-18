@@ -2,7 +2,7 @@
 Değerlendirme metrikleri (TÜBİTAK Raporu Hedef 4 ve Hipotez):
 - Teşhis: F1 (hedef > 0.88), AUROC, duyarlılık, özgüllük, yanlış negatif oranı (FNR)
 - Kriz tipi: MI kayıtlarında duvar bazlı AUROC
-- Rekonstrüksiyon (yalnızca kopan kanallar): RMSE (hedef < 0.15), R² (hedef > 0.80), Pearson r
+- Rekonstrüksiyon (yalnızca kopan kanallar, mV): RMSE (hedef < 0.15), R² (hedef > 0.80), Pearson r
 """
 import numpy as np
 import torch
@@ -58,39 +58,37 @@ class ClassificationMeter:
 
 
 class ReconstructionMeter:
-    """Kopan her (kayıt, derivasyon) çifti için rekonstrüksiyon kalitesi."""
+    """
+    Kopan her (kayıt, derivasyon) çifti için rekonstrüksiyon kalitesi, mV uzayında.
+    pred_mv, true_mv : (B, C, L) mV;  dropped : (B, C) bool;  valid : (B, C) bool (düz derivasyonlar hariç)
+    """
 
     def __init__(self):
-        self.sq_z = self.sq_mv = 0.0
+        self.sq = 0.0
         self.n = 0
         self.r2, self.pearson = [], []
 
     @torch.no_grad()
-    def update(self, recon, signal, dropped, sigma):
-        if recon is None or not dropped.any():
+    def update(self, pred_mv, true_mv, dropped, valid=None):
+        if pred_mv is None or not dropped.any():
             return
-        r, t = recon[dropped].float(), signal[dropped].float()   # (N, L)
-        s = sigma.to(recon.device)[dropped].float()                # (N,)
-        keep = s > 1e-6                                              # düz (sabit) derivasyonları atla
-        r, t, s = r[keep], t[keep], s[keep]
-        if r.numel() == 0:
+        sel = dropped if valid is None else (dropped & valid)
+        if not sel.any():
             return
+        r, t = pred_mv[sel].float(), true_mv[sel].float()             # (N, L)
         err = r - t
-        self.sq_z += float((err ** 2).sum())
-        self.sq_mv += float(((err * s[:, None]) ** 2).sum())
+        self.sq += float((err ** 2).sum())
         self.n += err.numel()
-
         tc, rc = t - t.mean(1, keepdim=True), r - r.mean(1, keepdim=True)
-        sst = (tc ** 2).sum(1).clamp(min=1e-8)
+        sst = (tc ** 2).sum(1).clamp(min=1e-12)
         self.r2.append((1 - (err ** 2).sum(1) / sst).cpu().numpy())
         self.pearson.append(((tc * rc).sum(1) / (sst.sqrt() * (rc ** 2).sum(1).sqrt().clamp(min=1e-8))).cpu().numpy())
 
     def result(self):
         if self.n == 0:
-            return {"rmse_z": float("nan"), "rmse_mv": float("nan"), "r2": float("nan"), "pearson_r": float("nan")}
+            return {"rmse_mv": float("nan"), "r2": float("nan"), "pearson_r": float("nan")}
         return {
-            "rmse_z": (self.sq_z / self.n) ** 0.5,
-            "rmse_mv": (self.sq_mv / self.n) ** 0.5,
+            "rmse_mv": (self.sq / self.n) ** 0.5,
             "r2": float(np.concatenate(self.r2).mean()),
             "pearson_r": float(np.concatenate(self.pearson).mean()),
         }

@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from src.dataset import PTBXLProcessedDataset
+from src.dataset import PTBXLProcessedDataset, population_sigma
 from src.einthoven import einthoven_complete
 from src.lead_dropout import LeadDropoutCollate, apply_lead_mask, full_keep_mask, random_keep_mask
 from src.losses import MultiTaskLoss
@@ -47,18 +47,19 @@ def _float_outputs(out):
     return {k: (v.float() if torch.is_tensor(v) and v.is_floating_point() else v) for k, v in out.items()}
 
 
-def _with_einthoven(recon, x, M, target):
+def model_forward(model, x_masked, M, target):
+    """Genlik bilgisi alan modellere sağlam derivasyonların σ'sı da verilir (kopanlarınki modelde maskelenir)."""
+    if getattr(model, "amplitude_aware", False):
+        return model(x_masked, M, sigma=target["sigma"])
+    return model(x_masked, M)
+
+
+def recon_to_mv(recon, pop_sigma):
     """
-    Risk 1 B planı: kopan ekstremite derivasyonlarını sağlam ekstremite derivasyonlarından Einthoven
-    bağıntılarıyla hesaplar (mV uzayında), metrik için z-score uzayına geri çevirir.
-    Kopan kanalların içeriği kullanılmaz; μ/σ dönüşümü tahmin ve hedefe aynı uygulandığından R² değişmez.
+    Gerçekçi mV rekonstrüksiyonu: kopan derivasyonun gerçek genliği bilinemez, popülasyon σ'sı kullanılır
+    (0.5–45 Hz filtre sonrası ortalama ≈ 0). Hem z-score çıkışlı hem fiziksel ölçekli modeller için geçerli.
     """
-    mu, sigma = target["mu"].unsqueeze(-1), target["sigma"].unsqueeze(-1).clamp(min=1e-6)
-    limb_mv = einthoven_complete(x * sigma + mu, M)
-    limb_z = (limb_mv - mu[:, :6]) / sigma[:, :6]
-    out = recon.clone()
-    out[:, :6] = torch.where(M[:, :6].unsqueeze(-1) > 0.5, recon[:, :6], limb_z)
-    return out
+    return recon * pop_sigma.view(1, -1, 1)
 
 
 def mixed_dropout_mask(batch_size, generator):
@@ -67,7 +68,8 @@ def mixed_dropout_mask(batch_size, generator):
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, amp=True, max_batches=None):
+def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, amp=True, max_batches=None,
+             pop_sigma=None):
     """
     mask_fn(batch_size, generator) -> (B, 12) M maskesi (1 = sağlam, 0 = koptu). None ise hiçbir kanal kopmaz.
     Döndürür: kayıp bileşenleri + teşhis metrikleri + rekonstrüksiyon metrikleri (+ ham olasılıklar)
@@ -75,7 +77,10 @@ def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, a
     model.eval()
     gen = torch.Generator().manual_seed(seed)
     totals = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0}
-    cls_meter, rec_meter, ein_meter = ClassificationMeter(), ReconstructionMeter(), ReconstructionMeter()
+    cls_meter = ClassificationMeter()
+    rec_meter, ein_meter, oracle_meter = ReconstructionMeter(), ReconstructionMeter(), ReconstructionMeter()
+    pop_sigma = torch.as_tensor(pop_sigma if pop_sigma is not None else population_sigma(), device=device)
+    physical = getattr(model, "physical_recon", False)
     n_batches = 0
     for i, (x, target) in enumerate(loader):
         if max_batches is not None and i >= max_batches:
@@ -85,21 +90,31 @@ def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, a
         x = x.to(device)
         target = {k: v.to(device) for k, v in target.items()}
         with autocast(device, amp):
-            out = model(apply_lead_mask(x, M), M)
+            out = model_forward(model, apply_lead_mask(x, M), M, target)
         out = _float_outputs(out)
         loss, parts = criterion(out, x, target)
         totals["loss"] += loss.item()
         for k in ("rec", "cls", "wall"):
             totals[k] += parts[k]
         cls_meter.update(out, target)
-        rec_meter.update(out["recon"], x, M < 0.5, target["sigma"])
         if out["recon"] is not None:
-            ein_meter.update(_with_einthoven(out["recon"], x, M, target), x, M < 0.5, target["sigma"])
+            sigma, mu = target["sigma"].unsqueeze(-1), target["mu"].unsqueeze(-1)
+            true_mv = x * sigma + mu
+            dropped, valid = M < 0.5, target["sigma"] > 1e-6
+            real_mv = recon_to_mv(out["recon"], pop_sigma)
+            rec_meter.update(real_mv, true_mv, dropped, valid)
+            # Risk 1 B planı: kopan ekstremite derivasyonları sağlam olanlardan Einthoven ile (kopanların içeriği kullanılmaz)
+            ein_mv = real_mv.clone()
+            ein_mv[:, :6] = torch.where(M[:, :6].unsqueeze(-1) > 0.5, real_mv[:, :6], einthoven_complete(true_mv, M))
+            ein_meter.update(ein_mv, true_mv, dropped, valid)
+            if not physical:  # yalnızca karşılaştırma: kopan kanalın gerçek genliği biliniyormuş gibi (oracle)
+                oracle_meter.update(out["recon"] * sigma + mu, true_mv, dropped, valid)
         n_batches += 1
     results = {k: v / max(n_batches, 1) for k, v in totals.items()}
     results.update(cls_meter.result(threshold))
     results.update(rec_meter.result())
     results.update({f"ein_{k}": v for k, v in ein_meter.result().items()})
+    results.update({f"oracle_{k}": v for k, v in oracle_meter.result().items()})
     results["_labels"], results["_probs"] = cls_meter.arrays()
     return results
 
@@ -234,7 +249,7 @@ def main():
         print(f"Epoch {epoch:02d}/{args.epochs}  train loss {train_stats['loss']:.4f} "
               f"(rec {train_stats['rec']:.4f}, cls {train_stats['cls']:.4f}, duvar {train_stats['wall']:.4f})  |  "
               f"val AUROC {val['auroc']:.4f} F1 {val['f1']:.4f} duvar-AUROC {val['wall_auroc_macro']:.4f}  "
-              f"RMSE {val['rmse_z']:.4f} R² {val['r2']:.4f} r {val['pearson_r']:.4f}  ({time.time() - t0:.0f} sn)",
+              f"RMSE {val['rmse_mv']:.4f} mV R² {val['r2']:.4f} r {val['pearson_r']:.4f}  ({time.time() - t0:.0f} sn)",
               flush=True)
 
         row = {"epoch": epoch, **{f"train_{k}": v for k, v in train_stats.items()},
