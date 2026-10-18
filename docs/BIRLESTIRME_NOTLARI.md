@@ -23,8 +23,13 @@ Model, PTB-XL test setinden (strat_fold 10) gerçek bir kayıt seçer; bu kayıt
 | Parametre | Değerler |
 |---|---|
 | `condition` | `normal`, `mi`, `ant`, `inf`, `lat`, `sttc` |
+| `ecg_id` | İsteğe bağlı: belirli bir kaydı analiz et (verilirse `condition` yok sayılır) |
 | `dropped` | Virgülle ayrılmış derivasyon adları, örn. `V1,V2` (en fazla 4) |
 | `active_leads` | 8–12; `dropped` boşsa bu sayıya göre rastgele kanal koparılır |
+
+### `GET /api/generate-report?ecg_id=…&dropped=…`
+
+Hastaya özel klinik PDF raporu üretir. Kayıt aynı kopmalarla yeniden analiz edilir; rapordaki her değer model çıktısıdır. Güven %70'in altındaysa raporda "karar sınırda" uyarısı çıkar.
 
 ### `POST /api/predict`
 
@@ -67,7 +72,25 @@ Kullanıcının kendi EKG'si için. Gövde: `{"signal": 12×N mV, "fs": 100, "mi
 1. **Teşhis sabit yazılıyor.** `src/services/ecgApi.js`, `condition` `normal`, `ant` veya `inf` iken backend'in teşhisini yok sayıyor. Etiketi ve güveni sabit yazıp her kopan kanal için %3.5 düşürüyor. Bu, rapordaki "kopmaya rağmen teşhis" iddiasını sınamayı engelliyor. `data.diagnosis` her senaryoda doğrudan kullanılmalı.
 2. **`smoothAndNormalize` sinyali bozuyor.** Her derivasyonu ±0.75'e ölçekliyor. Bu, derivasyonlar arası genlik farkını ve ST seviyesini (mV) siliyor. Klinik gösterim için mV ölçeği korunmalı.
 3. **Senaryo adları farklı.** Arayüz `mi` yerine `ant`/`inf` gönderiyor; backend artık `normal, mi, ant, inf, lat, sttc` değerlerinin hepsini kabul ediyor.
-4. **PDF parametreleri sabit.** `App.jsx` PDF raporuna `anomaly_score: '0.02500'` gibi sabit değerler gönderiyor. Yanıttaki gerçek `anomaly_score`, `xai_metrics.most_affected_lead` ve `click_to_explain` değerleri kullanılmalı. Ayrıca `confidence / 100` hatalı: güven zaten 0–1 aralığında.
+4. **PDF butonu `ecg_id` göndermeli.** Backend artık PDF'i gerçek model analizinden üretiyor: etkilenen duvarlar, ST sapması, şüpheli arter, kopan kanalların kaynakları ve düşük güven uyarısı. Bunun için arayüzün yalnızca ekranda gösterilen kaydın `ecg_id`'sini ve kopuk kanalları göndermesi yeterli. `App.jsx`'teki sabit `anomaly_score: '0.02500'` gibi değerlere gerek kalmıyor. Eski parametrelerle çağrı hâlâ çalışıyor, ama o yol şablon metin üretir.
+
+   `src/services/ecgApi.js` içinde son kaydın numarasını sakla:
+   ```js
+   let lastEcgId = null;
+   // fetchEcgData içinde, data alındıktan sonra:
+   lastEcgId = data.ecg_id ?? null;
+   // dışa aç:
+   export function getLastEcgId() { return lastEcgId; }
+   ```
+   `src/App.jsx` içinde `handleDownloadReport`:
+   ```js
+   const params = new URLSearchParams({
+     ecg_id: String(getLastEcgId()),
+     dropped: disconnectedLeads.map((idx) => LEAD_NAMES[idx]).join(','),
+   });
+   window.open(`http://127.0.0.1:8000/api/generate-report?${params}`, '_blank');
+   ```
+   Aynı kaydı tekrar analiz etmek için de `GET /api/sample-ecg?ecg_id=16038&dropped=V1,V2` kullanılabilir. Sonuç deterministiktir: aynı kayıt ve aynı kopmalar her zaman aynı sonucu verir.
 5. **3D kalp backend verisini okumuyor.** `AnatomicHeart.jsx` şu an yalnızca `disconnectedLeads` alıyor. `wall_damage_scores` (renk gradyanı) ve `click_to_explain` (tıklama kartı) bağlanmalı (İP4).
 
 ## Rapor ↔ kod durumu (Zilan'ın iş paketleri)

@@ -17,6 +17,7 @@ from reportlab.pdfgen import canvas
 from src.ecg_constants import (FS, LEAD_NAMES, SEQ_LEN, WALL_GROUPS, WALL_LEAD_INDICES, WALL_NAMES,
                                WALL_TO_ARTERY, WALL_TO_SUBCLASS)
 from src.model import ECGMaskedAutoencoder
+from src.clinical_report import build_clinical_pdf
 from src.einthoven import einthoven_complete
 from src.preprocessing import preprocess_ecg
 from src.st_analysis import MV_PER_MM, st_deviation_mv
@@ -269,25 +270,11 @@ def root():
     return {"status": "ok", "message": "12-Lead ECG MAE & XAI Backend Servisi Aktif", "model_loaded": MODEL_LOADED}
 
 
-@app.get("/api/sample-ecg")
-def get_sample_ecg(
-    active_leads: int = Query(12, ge=8, le=12, description="Aktif kanal sayısı (8-12)"),
-    dropped: str = Query(None, description="Virgülle ayrılmış kapatılacak kanallar (Örn: V1,V2)"),
-    condition: str = Query("normal", description="Klinik senaryo: normal, mi, ant, inf, lat, sttc")
-):
-    if "pools" not in store:
-        raise HTTPException(status_code=500, detail="Önişlenmiş veri seti yok. `python -m src.prepare_data` çalıştırın.")
-    target_condition = condition.lower()
-    if target_condition not in CONDITIONS:
-        raise HTTPException(status_code=400, detail=f"Geçersiz senaryo '{condition}'. Seçenekler: {list(CONDITIONS)}")
-
-    row = int(np.random.choice(store["pools"][target_condition]))
+def analyze_row(row: int, disabled: list):
+    """Önişlenmiş veri setindeki bir kaydı verilen kopma maskesiyle analiz eder (deterministik)."""
     rec = store["meta"].iloc[row]
     z = np.asarray(store["X"][row], dtype=np.float32)
     mu, sigma = store["mu"][row], store["sigma"][row]
-
-    dropped_list = [d.strip() for d in dropped.split(",") if d.strip()] if dropped else None
-    disabled = resolve_dropped(active_leads, dropped_list)
 
     # Kopan kanalın gerçek genliği/ofseti bilinmiyormuş gibi davran (gerçek saha koşulu)
     mu_inf, sigma_inf = mu.copy(), sigma.copy()
@@ -295,15 +282,48 @@ def get_sample_ecg(
 
     result = run_inference(z, mu_inf, sigma_inf, disabled)
     result["raw_signals"] = (z * sigma[:, None] + mu[:, None]).tolist()  # orijinal (filtreli) sinyal, kıyas için
-    result["source"] = "PTB-XL Test Seti (strat_fold 10)"
+    result["source"] = "PTB-XL Test Seti (strat_fold 10)" if rec["split"] == "test" else f"PTB-XL ({rec['split']})"
     result["patient_index"] = int(rec["ecg_id"])
     result["ecg_id"] = int(rec["ecg_id"])
-    result["selected_condition"] = target_condition
     walls_true = [w for w in WALL_NAMES if rec[WALL_TO_SUBCLASS[w]] == 1]
     result["ground_truth"] = {
         "label": {1: "MI", 0: "Normal", -1: "Diğer (MI/Normal dışı)"}[int(rec["label"])],
         "mi_walls": walls_true,
     }
+    return result
+
+
+def find_row(ecg_id: int):
+    rows = np.flatnonzero(store["meta"]["ecg_id"].to_numpy() == ecg_id)
+    if len(rows) == 0:
+        raise HTTPException(status_code=404, detail=f"ecg_id {ecg_id} bulunamadı")
+    return int(rows[0])
+
+
+def parse_dropped(dropped):
+    return [d.strip() for d in dropped.split(",") if d.strip()] if dropped else None
+
+
+@app.get("/api/sample-ecg")
+def get_sample_ecg(
+    active_leads: int = Query(12, ge=8, le=12, description="Aktif kanal sayısı (8-12)"),
+    dropped: str = Query(None, description="Virgülle ayrılmış kapatılacak kanallar (Örn: V1,V2)"),
+    condition: str = Query("normal", description="Klinik senaryo: normal, mi, ant, inf, lat, sttc"),
+    ecg_id: int = Query(None, description="Belirli bir kaydı analiz et (verilirse condition yok sayılır)"),
+):
+    if "pools" not in store:
+        raise HTTPException(status_code=500, detail="Önişlenmiş veri seti yok. `python -m src.prepare_data` çalıştırın.")
+    target_condition = condition.lower()
+    if ecg_id is not None:
+        row = find_row(ecg_id)
+    else:
+        if target_condition not in CONDITIONS:
+            raise HTTPException(status_code=400, detail=f"Geçersiz senaryo '{condition}'. Seçenekler: {list(CONDITIONS)}")
+        row = int(np.random.choice(store["pools"][target_condition]))
+
+    disabled = resolve_dropped(active_leads, parse_dropped(dropped))
+    result = analyze_row(row, disabled)
+    result["selected_condition"] = target_condition
     return result
 
 
@@ -348,8 +368,20 @@ def generate_pdf_report(
     active_leads: int = 12,
     dropped_leads: str = "",
     most_affected_lead: str = "V2",
-    anatomical_region: str = "On Duvar (Anterior)"
+    anatomical_region: str = "On Duvar (Anterior)",
+    ecg_id: int = Query(None, description="Rapor bu kaydın gerçek model analizinden üretilir (önerilen)"),
+    dropped: str = Query("", description="Analizdeki kopuk kanallar, örn. V1,V2 (ecg_id ile birlikte)"),
 ):
+    # Önerilen yol: ekrandaki analizle aynı kayıt ve aynı kopmalar yeniden analiz edilir;
+    # PDF tamamen model çıktısından üretilir (sabit metin veya arayüzden gelen değer kullanılmaz).
+    if ecg_id is not None:
+        if "pools" not in store:
+            raise HTTPException(status_code=500, detail="Önişlenmiş veri seti yok.")
+        result = analyze_row(find_row(ecg_id), resolve_dropped(12, parse_dropped(dropped)))
+        return StreamingResponse(build_clinical_pdf(result), media_type="application/pdf",
+                                 headers={"Content-Disposition": f"inline; filename=ecg_report_{ecg_id}.pdf"})
+
+    # Eski yol (geriye dönük uyumluluk): arayüzden gelen parametrelerle şablon rapor.
     # Senaryo / Tanıya göre klinik parametreleri ve hekim yorumlarını dinamik belirle
     diag_lower = diagnosis.lower()
     
