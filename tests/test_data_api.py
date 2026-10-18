@@ -139,3 +139,26 @@ def test_concurrent_requests_do_not_crash():
                                               "disconnectedLeads": leads}).status_code
         with ThreadPoolExecutor(max_workers=8) as pool:
             assert set(pool.map(call, range(40))) == {200}
+
+
+@needs_model
+@pytest.mark.skipif(not os.path.exists("data/demo/meta.csv"), reason="data/demo yok")
+def test_dashboard_works_with_demo_data_only():
+    """Tam önbellek (data/processed, ~1 GB) olmayan bir bilgisayarda arayüz repodaki demo setiyle çalışmalı."""
+    from fastapi.testclient import TestClient
+    import src.main as m
+
+    old, m.PROCESSED_DIR = m.PROCESSED_DIR, "data/__yok__"
+    m.store.clear(), m.ui_records.clear(), m._ui_cache.clear()
+    try:
+        with TestClient(m.app) as c:
+            assert "demo" in c.get("/api/health").json()["dataSource"]
+            for cond in ["normal", "ant", "inf", "lat", "mi", "sttc"]:
+                p = c.post("/api/predict", json={"condition": cond, "disconnectedLeads": [6, 7]})
+                assert p.status_code == 200, cond
+                ch = c.post("/api/chunk", json={"start": 0, "count": 100, "condition": cond, "disconnectedLeads": [6, 7]})
+                assert ch.status_code == 200 and set(ch.json()["reconstructed"]) == {"6", "7"}
+            assert c.get("/api/generate-report", params={"ecg_id": 16038, "dropped": "V1"}).status_code == 200
+    finally:
+        m.PROCESSED_DIR = old
+        m.store.clear(), m.ui_records.clear(), m._ui_cache.clear()
