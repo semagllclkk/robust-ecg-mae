@@ -51,10 +51,11 @@ Kullanıcının kendi EKG'si için. Gövde: `{"signal": 12×N mV, "fs": 100, "mi
 | `mi_probability` | 0–1 |
 | `einthoven_completed_leads` | Einthoven bağıntılarıyla kesin hesaplanan kopan ekstremite derivasyonları (Risk 1 B planı) |
 | `diagnosis.affected_wall` | MI ise en olası duvar |
+| `diagnosis.affected_walls` | MI ise etkilenen tüm duvarlar: P(duvar ∣ MI) ≥ 0.5, örn. `["Anterior", "Inferior"]`. `predicted_class` metni de buna göre yazılır ("Anterior + Inferior Myocardial Infarction") |
 | `lead_attention` | `{I: …, V6: …}`, Spatial Attention katmanından derivasyon önemi; toplamı 1, kopan kanallarda 0. XAI ısı haritası için |
 | `spatial_attention` | 12×12 matris (sorgu × anahtar). Satır i: derivasyon i'nin hangi sağlam kanallardan beslendiği |
 | `reconstruction_sources` | Her kopan kanal için onu en çok temsil eden 3 sağlam kanal ve ağırlığı, örn. `{"V2": {"V3": 0.31, …}}` |
-| `click_to_explain.{Anterior,Inferior,Lateral}` | 3D duvara tıklanınca gösterilecek kart: `explanation` (hazır Türkçe metin), `damage_score`, `st_deviation_mm` (derivasyon başına), `max_st_deviation_mm`, `suspected_artery`, `missing_leads`, `decision_confidence`, `attention_share` |
+| `click_to_explain.{Anterior,Inferior,Lateral}` | 3D duvara tıklanınca gösterilecek kart: `affected` (true ise duvar kırmızı boyanmalı), `explanation` (hazır Türkçe metin), `damage_score`, `st_deviation_mm` (derivasyon başına), `max_st_deviation_mm`, `suspected_artery`, `missing_leads`, `decision_confidence`, `attention_share` |
 | `st_deviation_mm`, `st_reference_lead` | Tüm derivasyonlar için ST sapması (mm) |
 | `ground_truth` | `{label, mi_walls}`. Demo kaydının gerçek etiketi (yalnızca `sample-ecg`'de) |
 | `model_loaded` | `false` ise eğitilmiş ağırlık yok, çıktılar anlamsızdır |

@@ -58,6 +58,12 @@ Okun sağındaki değerler: MAE + Einthoven kısıtı (Risk 1 B planı).
 2. **En zor durum kritik Anterior kopması.** V1–V4'ün dördü birden gidince kalan V5–V6 ve ekstremite derivasyonları sağ prekordiyal bölgeyi tam temsil edemiyor (R² 0.70). Grafik: `results/reconstruction_anterior.png`.
 3. **Einthoven kısıtı (Risk 1 B planı) ekstremite derivasyonlarını tam çözüyor.** Kritik Inferior kopmasında R² 0.848'den 1.000'e çıkıyor. Grafik: `results/reconstruction_inferior_einthoven.png`. Göğüs derivasyonlarına bu kısıt uygulanamıyor; onlar fiziksel olarak bağımsız.
 4. **Kriz tipi ayrımı güçlü.** Anterior/Inferior/Lateral MI ayrımında AUROC 0.95. Lateral MI test setinde yalnızca 20 kayıt olduğu için o değer daha az güvenilir.
+   API, P(duvar ∣ MI) ≥ 0.5 olan tüm duvarları raporlar. MI test kayıtlarının %19'unda birden fazla duvar etkilenmiştir. Yalnızca en olası duvarı yazmaya göre:
+
+   | MI test kayıtları | Yalnız en olası duvar | Eşik 0.5 (çoklu duvar) |
+   |---|---|---|
+   | 12 kanal: tam eşleşme / duyarlılık / kesinlik | %73.6 / %77.9 / %92.5 | **%80.9 / %91.1** / %89.9 |
+   | Rastgele 2 kanal kopuk | %73.1 / %77.5 / %92.0 | **%79.8 / %89.7** / %88.9 |
 
 ## 30 epoch'luk ikinci eğitim (karşılaştırma)
 

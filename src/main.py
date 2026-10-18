@@ -44,6 +44,7 @@ app.add_middleware(
 device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
 MODEL_PATH = "models/mae_ecg_checkpoint.pth"
 PROCESSED_DIR = "data/processed"
+WALL_THRESHOLD = 0.5  # kriz tipi: P(duvar | MI) bu eşiği geçen duvarlar etkilenmiş sayılır
 
 model, MODEL_LOADED, DECISION_THRESHOLD = ECGMaskedAutoencoder().to(device).eval(), False, 0.5
 if os.path.exists(MODEL_PATH):
@@ -175,6 +176,10 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
     confidence = mi_prob if is_mi else 1.0 - mi_prob
     damage = {w: mi_prob * float(wall_prob[i]) for i, w in enumerate(WALL_NAMES)}
     top_wall = max(damage, key=damage.get)
+    # Birden fazla duvar etkilenmiş olabilir: P(duvar | MI) ≥ 0.5 olan tüm duvarlar (yoksa en olası duvar)
+    affected_walls = [w for i, w in enumerate(WALL_NAMES) if wall_prob[i] >= WALL_THRESHOLD] or [top_wall]
+    if not is_mi:
+        affected_walls = []
 
     st_mv, st_ref = st_deviation_mv(filled_mv, disabled)
     most_idx = int(np.argmax(lead_attn))
@@ -187,7 +192,7 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
         st_leads = {LEAD_NAMES[j]: (None if np.isnan(st_mv[j]) else round(float(st_mv[j]) / MV_PER_MM, 2)) for j in idxs}
         valid = [v for v in st_leads.values() if v is not None]
         max_st = max(valid, key=abs) if valid else None
-        if is_mi and w == top_wall:
+        if w in affected_walls:
             st_text = f"En belirgin ST sapması {max_st:+.1f} mm. " if max_st is not None else ""
             text = (f"{w} duvarında MI şüphesi (olasılık %{100 * damage[w]:.0f}). "
                     f"{st_text}Şüpheli arter: {WALL_TO_ARTERY[w]}.")
@@ -197,6 +202,7 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
             text += f" {', '.join(missing)} kopuk; bu kanallar sağlam kanallardan rekonstrükte edildi."
         click_to_explain[w] = {
             "leads": WALL_GROUPS[w],
+            "affected": w in affected_walls,
             "damage_score": damage[w],
             "wall_probability_given_mi": float(wall_prob[i]),
             "attention_share": float(lead_attn[idxs].sum()),
@@ -212,7 +218,8 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
     rec_err = float(mse_per_lead[disabled].mean()) if disabled else float(mse_per_lead.mean())
 
     if is_mi:
-        predicted = f"{top_wall} Myocardial Infarction ({top_wall} MI)"
+        walls_text = " + ".join(affected_walls)
+        predicted = f"{walls_text} Myocardial Infarction ({walls_text} MI)"
     else:
         predicted = "Normal (MI bulgusu yok)"
 
@@ -241,6 +248,7 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
             "confidence": confidence,
             "is_mi": is_mi,
             "affected_wall": top_wall if is_mi else None,
+            "affected_walls": affected_walls,
         },
         "xai_metrics": {
             "most_affected_lead": most_lead,
