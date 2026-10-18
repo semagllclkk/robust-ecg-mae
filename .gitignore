@@ -1,0 +1,19 @@
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Modeller (Sema backend yuvası) — ana modeller models/ altında izlenir
+backend/models/
+
+# Veri (PTB-XL ~3 GB, önişlenmiş önbellek ~1 GB, NSTDB; yeniden üretilebilir)
+data/ptbxl/
+data/processed*/
+data/nstdb/
+
+# Sistem / araç
+.DS_Store
+.claude/

@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tasarım belirteçleri (RGB kanalları; Tailwind alpha modifier'ı ile kullanılır) */
+:root {
+  --bg: 243 244 246;
+  --surface: 255 255 255;
+  --sunken: 248 249 251;
+  --line: 226 229 234;
+  --line-strong: 205 210 218;
+  --text: 17 20 24;
+  --muted: 91 100 114;
+  --subtle: 139 147 161;
+  --accent: 11 92 173;
+  --danger: 200 16 46;
+  --warning: 180 83 9;
+  --success: 4 120 87;
+  --recon: 124 58 237;
+  --wall-ant: 37 99 235;
+  --wall-inf: 217 119 6;
+  --wall-lat: 5 150 105;
+  --wall-neu: 139 147 161;
+}
+
+@layer base {
+  html {
+    min-width: 320px;
+  }
+
+  body {
+    @apply m-0 bg-bg font-sans text-text antialiased;
+    font-size: 13px;
+    line-height: 1.45;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  button,
+  select,
+  input {
+    font: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .num {
+    @apply font-mono tabular-nums;
+  }
+
+  /* 3D kalp sahnesi: klinik atlas tarzı açık zemin */
+  .heart-stage {
+    background: radial-gradient(ellipse 70% 60% at 50% 42%, #ffffff 0%, #eef1f5 50%, #dde3ea 100%);
+  }
+}
