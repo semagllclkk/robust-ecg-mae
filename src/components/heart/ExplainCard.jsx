@@ -26,7 +26,9 @@ export default function ExplainCard({ info, prediction, disconnectedLeads, onClo
     const attentionShare = wallLeads.reduce((sum, lead) => sum + prediction.attention[lead], 0);
     const missing = wallLeads.filter((lead) => disconnectedLeads.includes(lead));
     const probability = prediction.wallProbabilities[wall] ?? 0;
-    const isDiagnosis = prediction.region === wall;
+    const isDiagnosis = (prediction.regions ?? [prediction.region]).includes(wall);
+    // Md. 2.3: kopan kanalı en çok temsil eden sağlam kanallar (Spatial Attention), örn. V2 ← V3 %31
+    const sources = prediction.reconstructionSources ?? {};
 
     reasoning = (
       <div className="mt-3 space-y-1.5 border-t border-line pt-3 text-xs">
@@ -36,7 +38,7 @@ export default function ExplainCard({ info, prediction, disconnectedLeads, onClo
             <span className="rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold text-danger">TANI</span>
           )}
         </div>
-        <Row label="Duvar olasılığı" tone={probability >= 0.5 ? 'text-danger font-semibold' : 'text-text'}>
+        <Row label="Duvar olasılığı" tone={isDiagnosis ? 'text-danger font-semibold' : 'text-text'}>
           %{Math.round(probability * 100)}
         </Row>
         <Row
@@ -57,6 +59,20 @@ export default function ExplainCard({ info, prediction, disconnectedLeads, onClo
                 .join(', ')
             : 'Yok'}
         </Row>
+        {missing.map((lead) => {
+          const from = sources[LEADS[lead].name];
+          if (!from || prediction.reconstruction?.[lead] !== 'mae') return null;
+          return (
+            <p className="m-0 text-[11px] text-muted" key={lead}>
+              <span className="font-medium text-recon">{LEADS[lead].name}</span> şu kanallardan üretildi:{' '}
+              <span className="num">
+                {Object.entries(from)
+                  .map(([name, weight]) => `${name} %${Math.round(weight * 100)}`)
+                  .join(', ')}
+              </span>
+            </p>
+          );
+        })}
         <Row label="Karar güveni">
           %{Math.round(prediction.confidence * 100)}
           {disconnectedLeads.length > 0 && (

@@ -108,8 +108,44 @@ export function ScenarioPanel({ scenario, onScenarioChange }) {
   );
 }
 
+function GroundTruth({ prediction }) {
+  const truth = prediction.groundTruth;
+  if (!truth) return null;
+  const truthWalls = (truth.mi_walls ?? []).map((wall) => wall.toLowerCase());
+  const modelWalls = prediction.regions ?? (prediction.region ? [prediction.region] : []);
+  const truthMi = truth.label === 'MI';
+  const sameClass = truthMi === modelWalls.length > 0;
+  const sameWalls =
+    sameClass && truthWalls.length === modelWalls.length && truthWalls.every((w) => modelWalls.includes(w));
+  const verdict = !sameClass
+    ? { text: 'Farklı', tone: 'bg-danger/10 text-danger' }
+    : !truthMi || sameWalls
+      ? { text: 'Eşleşti', tone: 'bg-success/10 text-success' }
+      : { text: 'Duvar farklı', tone: 'bg-warning/10 text-warning' };
+
+  return (
+    <div className="rounded-md border border-line bg-sunken px-2.5 py-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-muted">
+          Gerçek tanı{prediction.ecgId != null && <span className="num"> · PTB-XL #{prediction.ecgId}</span>}
+        </span>
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${verdict.tone}`}>{verdict.text}</span>
+      </div>
+      <p className="m-0 mt-0.5 font-medium text-text">
+        {truth.label}
+        {truthWalls.length > 0 && ` · ${truth.mi_walls.join(' + ')}`}
+      </p>
+    </div>
+  );
+}
+
 export function DiagnosisPanel({ prediction, disconnectedLeads }) {
-  const isMi = Boolean(prediction?.region);
+  const walls = prediction ? prediction.regions ?? (prediction.region ? [prediction.region] : []) : [];
+  const isMi = walls.length > 0;
+  const arteries = walls.map((wall) => WALLS[wall]?.artery).filter(Boolean);
+  const warning = prediction?.report?.warning;
+  const signed = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}`;
+
   return (
     <Panel meta={prediction?.latencyMs != null ? `${prediction.latencyMs} ms` : null} title="Model çıktısı">
       {!prediction ? (
@@ -121,9 +157,14 @@ export function DiagnosisPanel({ prediction, disconnectedLeads }) {
               {prediction.label}
             </p>
             <p className="m-0 mt-0.5 text-xs text-muted">
-              {isMi ? `Şüpheli arter: ${prediction.artery}` : 'Akut iskemi bulgusu yok'}
+              {isMi ? `Şüpheli arter: ${arteries.join(', ')}` : 'Akut iskemi bulgusu yok'}
             </p>
           </div>
+          {warning && (
+            <p className="m-0 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2 text-xs text-warning" role="alert">
+              {warning}
+            </p>
+          )}
           <div>
             <div className="mb-1 flex justify-between text-xs text-muted">
               Karar güveni
@@ -133,14 +174,13 @@ export function DiagnosisPanel({ prediction, disconnectedLeads }) {
           </div>
           <dl className="m-0 grid grid-cols-2 gap-y-1.5 text-xs">
             <dt className="text-muted">Maks. ST</dt>
-            <dd className="num m-0 text-right">
-              {isMi ? `+${prediction.stDeviation.toFixed(1)} mm` : '—'}
-            </dd>
+            <dd className="num m-0 text-right">{isMi ? `${signed(prediction.stDeviation)} mm` : '—'}</dd>
             <dt className="text-muted">Kopuk kanal</dt>
             <dd className="num m-0 text-right">{disconnectedLeads.length}</dd>
             <dt className="text-muted">Model</dt>
             <dd className="m-0 truncate text-right">{prediction.modelSource}</dd>
           </dl>
+          <GroundTruth prediction={prediction} />
         </div>
       )}
     </Panel>

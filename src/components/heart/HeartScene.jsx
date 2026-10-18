@@ -136,8 +136,8 @@ export default function HeartScene({
   bpm = 72,
   beatActive = true,
   cameraView = 'anterior',
-  highlightedRegion = null,
-  highlightStrength = 1,
+  // { anterior: 0.9, inferior: 0.7 } — vurgulanacak duvarlar ve vurgu şiddeti (0–1); çoklu duvar MI için
+  highlights = {},
   affectedRegions = [],
   layers = { vessels: true, coronary: true, atria: true, ventricles: true, inner: true },
   wallOpacity = 1.0,
@@ -159,8 +159,7 @@ export default function HeartScene({
     bpm,
     beatActive,
     cameraView,
-    highlightedRegion,
-    highlightStrength,
+    highlights,
     affectedRegions,
     layers,
     wallOpacity,
@@ -252,7 +251,7 @@ export default function HeartScene({
     let baseCol = {};
     let coronaryMeshes = {};
 
-    const hl = { walls: [], regions: [], level: 0, target: 0, strength: 1 };
+    const hl = { walls: [], regions: [], strength: {}, level: 0, target: 0 };
     const heatOut = [0, 0, 0];
 
     function setHeat(w, pulse, out) {
@@ -307,7 +306,7 @@ export default function HeartScene({
       const affectedWalls = currentProps.affectedRegions || [];
       const affectedLV = expandWalls(affectedWalls);
       const manualLV = hl.regions;
-      const level = hl.level * hl.strength;
+      const level = hl.level;
       const hasManual = manualLV.length > 0 && level > 0.001;
 
       // Vurgu yoksa taban renkler bir kez geri yüklenir; sonraki karelerde GPU'ya veri gönderilmez
@@ -334,7 +333,16 @@ export default function HeartScene({
         return w;
       };
 
-      const manualLVWeight = maxOver(manualLV, regionW.lv);
+      // Her LV bölgesi kendi duvarının şiddetiyle (model olasılığı) ölçeklenir
+      const manualLVWeight = (i) => {
+        let w = 0;
+        for (let j = 0; j < manualLV.length; j++) {
+          const arr = regionW.lv[manualLV[j]];
+          const v = arr ? arr[i] * (hl.strength[manualLV[j]] ?? 1) : 0;
+          if (v > w) w = v;
+        }
+        return w;
+      };
       paintMesh(
         parts.lv,
         baseCol.lv,
@@ -349,7 +357,7 @@ export default function HeartScene({
       paintMesh(
         parts.septum,
         baseCol.septum,
-        sepMan ? (i) => regionW.septumAll[i] * level : null,
+        sepMan ? (i) => regionW.septumAll[i] * level * (hl.strength.septal ?? 1) : null,
         sepAff ? () => 0.85 : null,
         pulse,
         blinkAlpha,
@@ -363,7 +371,8 @@ export default function HeartScene({
           const k = 0.7 * blinkAlpha;
           emissive.setRGB(blink[0] * k, blink[1] * k, blink[2] * k);
         } else if (hasManual && hl.walls.includes(wall)) {
-          emissive.setRGB(0.9 * level, 0.12 * level, 0.04 * level);
+          const k = level * (hl.strength[WALL_TO_LV[wall][0]] ?? 1);
+          emissive.setRGB(0.9 * k, 0.12 * k, 0.04 * k);
         } else {
           emissive.setRGB(0, 0, 0);
         }
@@ -814,14 +823,19 @@ export default function HeartScene({
       }
 
       // XAI vurgusu (model tahmini veya kullanıcı seçimi) ve kopuk kanal yanıp sönmesi
-      const activeHighlight = currentProps.highlightedRegion;
-      if (activeHighlight) {
-        // Söndürme sırasında son bölge korunur ki vurgu yumuşakça kaybolsun
-        hl.walls = [activeHighlight];
-        hl.regions = expandWalls(hl.walls);
+      const active = Object.keys(currentProps.highlights || {});
+      if (active.length) {
+        // Söndürme sırasında son duvarlar korunur ki vurgu yumuşakça kaybolsun
+        hl.walls = active;
+        hl.regions = expandWalls(active);
+        hl.strength = {};
+        active.forEach((wall) => {
+          WALL_TO_LV[wall]?.forEach((region) => {
+            hl.strength[region] = currentProps.highlights[wall];
+          });
+        });
       }
-      hl.strength = currentProps.highlightStrength ?? 1;
-      hl.target = activeHighlight ? 1 : 0;
+      hl.target = active.length ? 1 : 0;
       hl.level += (hl.target - hl.level) * Math.min(1, dt * 6);
       if (Math.abs(hl.target - hl.level) < 0.003) hl.level = hl.target;
 
