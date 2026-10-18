@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import os
 import io
+import json
 import random
 import sys
 import threading
@@ -56,7 +57,12 @@ device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if
 MODEL_PATH = "models/mae_ecg_checkpoint.pth"
 PROCESSED_DIR = "data/processed"
 DEMO_DIR = "data/demo"  # tam önbellek yoksa: repodaki küçük demo seti (python -m src.make_demo_data)
-WALL_THRESHOLD = 0.5  # kriz tipi: P(duvar | MI) bu eşiği geçen duvarlar etkilenmiş sayılır
+WALL_THRESHOLDS_PATH = "models/wall_thresholds.json"  # python -m src.calibrate_walls (doğrulama seti)
+# Kriz tipi: P(duvar | MI) duvarın eşiğini geçerse duvar etkilenmiş sayılır. Kalibrasyon dosyası yoksa 0.5.
+WALL_THRESHOLDS = {w: 0.5 for w in WALL_NAMES}
+if os.path.exists(WALL_THRESHOLDS_PATH):
+    with open(WALL_THRESHOLDS_PATH, encoding="utf-8") as _fh:
+        WALL_THRESHOLDS.update(json.load(_fh)["thresholds"])
 
 model, MODEL_LOADED, DECISION_THRESHOLD = ECGMaskedAutoencoder().to(device).eval(), False, 0.5
 MODEL_SOURCE = "MAE (eğitilmemiş)"
@@ -69,7 +75,8 @@ if os.path.exists(MODEL_PATH):
     else:
         MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
         MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
-        print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f})")
+        print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f}, "
+              f"duvar eşikleri {', '.join(f'{w} {t:.2f}' for w, t in WALL_THRESHOLDS.items())})")
 else:
     print("⚠ Uyarı: Model ağırlık dosyası bulunamadı. Eğitilmemiş ağırlıklarla (mock) çalışılıyor.")
 
@@ -213,7 +220,7 @@ def _run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: l
     damage = {w: mi_prob * float(wall_prob[i]) for i, w in enumerate(WALL_NAMES)}
     top_wall = max(damage, key=damage.get)
     # Birden fazla duvar etkilenmiş olabilir: P(duvar | MI) ≥ 0.5 olan tüm duvarlar (yoksa en olası duvar)
-    affected_walls = [w for i, w in enumerate(WALL_NAMES) if wall_prob[i] >= WALL_THRESHOLD] or [top_wall]
+    affected_walls = [w for i, w in enumerate(WALL_NAMES) if wall_prob[i] >= WALL_THRESHOLDS[w]] or [top_wall]
     if not is_mi:
         affected_walls = []
 
