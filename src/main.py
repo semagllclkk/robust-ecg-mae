@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+from collections import OrderedDict
 from scipy.signal import resample
 import torch
 import numpy as np
@@ -48,10 +49,12 @@ PROCESSED_DIR = "data/processed"
 WALL_THRESHOLD = 0.5  # kriz tipi: P(duvar | MI) bu eşiği geçen duvarlar etkilenmiş sayılır
 
 model, MODEL_LOADED, DECISION_THRESHOLD = ECGMaskedAutoencoder().to(device).eval(), False, 0.5
+MODEL_SOURCE = "MAE (eğitilmemiş)"
 if os.path.exists(MODEL_PATH):
     try:
         model, _ckpt = load_checkpoint(MODEL_PATH, device)
         MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
+        MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
         print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f})")
     except Exception as e:
         print(f"⚠ Uyarı: Checkpoint yeni model mimarisiyle uyumsuz ({type(e).__name__}). "
@@ -334,14 +337,130 @@ def get_sample_ecg(
     return result
 
 
+# --------------------------------------------------------------------------
+# 6. Arayüz sözleşmesi (Sema'nın dashboard'u, İP5): /api/health, /api/chunk, /api/predict
+#    Sinyal: senaryoya göre seçilen gerçek PTB-XL test kaydı (10 s, döngüyle akar).
+#    Teşhis/XAI: eğitilmiş çift başlıklı MAE (yukarıdaki run_inference ile aynı çıktı).
+# --------------------------------------------------------------------------
+UI_WALL = {w: w.lower() for w in WALL_NAMES}            # "Anterior" -> "anterior"
+MAX_DISCONNECTED = 4
+ui_records = {}                                          # senaryo -> seçili kayıt satırı
+_ui_cache = OrderedDict()                                # (satır, kopuk kanallar) -> analiz
+
+
+class UILeadState(BaseModel):
+    condition: str = "normal"
+    disconnectedLeads: list[int] = Field(default_factory=list)
+
+    @field_validator("condition")
+    @classmethod
+    def known_condition(cls, value):
+        if value not in CONDITIONS:
+            raise ValueError(f"Bilinmeyen EKG senaryosu: {value}")
+        return value
+
+    @field_validator("disconnectedLeads")
+    @classmethod
+    def valid_leads(cls, value):
+        value = sorted(set(value))
+        if any(i < 0 or i >= 12 for i in value):
+            raise ValueError("Derivasyon indeksi 0–11 aralığında olmalı.")
+        if len(value) > MAX_DISCONNECTED:
+            raise ValueError(f"En fazla {MAX_DISCONNECTED} derivasyon koparılabilir.")
+        return value
+
+
+class UIChunkRequest(UILeadState):
+    start: int = Field(ge=0)
+    count: int = Field(gt=0, le=2000)
+
+
+def ui_record_row(condition: str, new: bool = False) -> int:
+    """Senaryo için gösterilen kayıt; sunucu açık kaldıkça aynı kalır (akış ve teşhis tutarlı olsun)."""
+    if "pools" not in store:
+        raise HTTPException(status_code=500, detail="Önişlenmiş veri seti yok. `python -m src.prepare_data` çalıştırın.")
+    if new or condition not in ui_records:
+        ui_records[condition] = int(np.random.choice(store["pools"][condition]))
+    return ui_records[condition]
+
+
+def ui_analysis(condition: str, disconnected: list[int]) -> dict:
+    key = (ui_record_row(condition), tuple(disconnected))
+    if key not in _ui_cache:
+        _ui_cache[key] = analyze_row(key[0], list(disconnected))
+        if len(_ui_cache) > 64:
+            _ui_cache.popitem(last=False)
+    return _ui_cache[key]
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "modelSource": MODEL_SOURCE, "modelLoaded": MODEL_LOADED,
+            "sampleRate": FS, "leads": LEAD_NAMES}
+
+
+@app.post("/api/chunk")
+def ui_chunk(req: UIChunkRequest):
+    """Canlı akış: kaydın [start, start+count) aralığı (10 s'lik kayıt döngüyle tekrarlanır) + kopuk kanalların rekonstrüksiyonu."""
+    r = ui_analysis(req.condition, req.disconnectedLeads)
+    idx = (req.start + np.arange(req.count)) % SEQ_LEN
+    data = np.asarray(r["raw_signals"])[:, idx]
+    data[req.disconnectedLeads] = 0.0                    # kopuk kablodan sinyal gelmez
+    rec = np.asarray(r["reconstructed_signals"])[:, idx]
+    return {
+        "start": req.start,
+        "data": np.round(data, 4).tolist(),
+        "reconstructed": {str(i): np.round(rec[i], 4).tolist() for i in req.disconnectedLeads},
+    }
+
+
+@app.post("/api/predict")
+def ui_predict(req: UILeadState):
+    """Teşhis, duvar olasılıkları, derivasyon başına ST (mm), Spatial Attention ağırlıkları."""
+    started = time.perf_counter()
+    r = ui_analysis(req.condition, req.disconnectedLeads)
+    diag = r["diagnosis"]
+    walls = diag.get("affected_walls") or []
+    region = UI_WALL[diag["affected_wall"]] if diag["is_mi"] else None
+    st = [float(r["st_deviation_mm"][name] or 0.0) for name in LEAD_NAMES]
+    st_region = max(st[i] for i in WALL_LEAD_INDICES[diag["affected_wall"]]) if region else 0.0
+    return {
+        "label": f"{' + '.join(walls)} MI" if diag["is_mi"] else "Normal (MI bulgusu yok)",
+        "region": region,
+        "regions": [UI_WALL[w] for w in walls],
+        "artery": WALL_TO_ARTERY[diag["affected_wall"]] if region else None,
+        "confidence": round(float(diag["confidence"]), 4),
+        "miProbability": round(float(r["mi_probability"]), 4),
+        "stDeviation": round(st_region, 2),
+        "stByLead": [round(v, 2) for v in st],
+        "attention": [round(float(r["lead_attention"][name]), 4) for name in LEAD_NAMES],
+        "wallProbabilities": {UI_WALL[w]: round(float(v), 4) for w, v in r["wall_damage_scores"].items()},
+        "reconstruction": {str(i): ("einthoven" if LEAD_NAMES[i] in r["einthoven_completed_leads"] else "mae")
+                           for i in req.disconnectedLeads},
+        "reconstructionSources": r["reconstruction_sources"],
+        "modelSource": MODEL_SOURCE,
+        "ecgId": r["ecg_id"],
+        "groundTruth": r["ground_truth"],
+        "disconnectedLeads": req.disconnectedLeads,
+        "latencyMs": round((time.perf_counter() - started) * 1000, 1),
+    }
+
+
+@app.post("/api/new-record")
+def ui_new_record(req: UILeadState):
+    """Aynı senaryodan başka bir hasta kaydına geç."""
+    row = ui_record_row(req.condition, new=True)
+    return {"condition": req.condition, "ecgId": int(store["meta"].iloc[row]["ecg_id"])}
+
+
 class PredictRequest(BaseModel):
     signal: list            # 12 x N (mV) — N x 12 de kabul edilir
     fs: int = FS            # örnekleme frekansı (Hz)
     missing_leads: list = []  # gerçekte kopuk derivasyon adları, örn. ["V1", "V2"]
 
 
-@app.post("/api/predict")
-def predict(req: PredictRequest):
+@app.post("/api/predict-signal")
+def predict_signal(req: PredictRequest):
     sig = np.asarray(req.signal, dtype=np.float64)
     if sig.ndim != 2 or 12 not in sig.shape:
         raise HTTPException(status_code=400, detail="signal 12 x N (veya N x 12) boyutunda olmalı")

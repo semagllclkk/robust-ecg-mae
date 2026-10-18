@@ -80,3 +80,39 @@ def test_api_end_to_end():
         assert np.abs(raw[[1, 2, 5]] - np.array(inf["reconstructed_signals"])[[1, 2, 5]]).max() < 0.01
         pdf = c.get("/api/generate-report", params={"ecg_id": 16038, "dropped": "V1"})
         assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+
+
+@needs_data
+@needs_model
+def test_ui_contract_for_dashboard():
+    """Sema'nın arayüzünün (src/services/ecgApi.js) beklediği sözleşme."""
+    from fastapi.testclient import TestClient
+    import src.main as m
+
+    with TestClient(m.app) as c:
+        h = c.get("/api/health").json()
+        assert h["status"] == "ok" and h["sampleRate"] == 100 and len(h["leads"]) == 12 and "MAE" in h["modelSource"]
+
+        ch = c.post("/api/chunk", json={"start": 950, "count": 200, "condition": "ant", "disconnectedLeads": [6, 7]}).json()
+        data = np.array(ch["data"])
+        assert data.shape == (12, 200) and np.all(data[[6, 7]] == 0)          # kopuk kanal sıfır
+        assert set(ch["reconstructed"]) == {"6", "7"} and len(ch["reconstructed"]["6"]) == 200
+        assert np.abs(np.array(ch["reconstructed"]["6"])).max() > 0           # rekonstrüksiyon var
+        again = c.post("/api/chunk", json={"start": 1950, "count": 200, "condition": "ant", "disconnectedLeads": [6, 7]}).json()
+        assert again["data"] == ch["data"]                                    # 10 s'lik kayıt döngüyle akar
+
+        p = c.post("/api/predict", json={"condition": "ant", "disconnectedLeads": [6, 7]}).json()
+        for key in ["label", "region", "artery", "confidence", "stDeviation", "stByLead", "attention",
+                    "wallProbabilities", "reconstruction", "modelSource"]:
+            assert key in p, key
+        assert len(p["stByLead"]) == 12 and all(isinstance(v, float) for v in p["stByLead"])
+        assert abs(sum(p["attention"]) - 1) < 1e-3 and p["attention"][6] == 0 and p["attention"][7] == 0
+        assert set(p["wallProbabilities"]) == {"anterior", "inferior", "lateral"}
+        assert p["region"] in (None, "anterior", "inferior", "lateral")
+        assert p["reconstruction"] == {"6": "mae", "7": "mae"}
+        lim = c.post("/api/predict", json={"condition": "inf", "disconnectedLeads": [1, 2, 5]}).json()
+        assert lim["reconstruction"] == {"1": "einthoven", "2": "einthoven", "5": "einthoven"}
+
+        assert c.post("/api/predict", json={"condition": "xyz"}).status_code == 422
+        assert c.post("/api/predict", json={"condition": "normal", "disconnectedLeads": [0, 1, 2, 3, 4]}).status_code == 422
+        assert c.post("/api/chunk", json={"start": 0, "count": 10, "condition": "normal", "disconnectedLeads": [12]}).status_code == 422

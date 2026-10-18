@@ -14,6 +14,25 @@ uvicorn src.main:app --port 8000    # API
 
 Eğitim ve API aynı anda çalışırsa ikisi de çok yavaşlar, çünkü Apple GPU'yu paylaşırlar.
 
+## Birleştirme durumu (18.10.2026)
+
+- `feature/entegrasyon` dalı: Sema'nın arayüzü (İP2, İP4) + Zilan'ın backend'i (İP1, İP3, değerlendirme).
+- **Tek backend:** `src/main.py`. Sema'nın arayüzü onun sözleşmesindeki uç noktalarla doğrudan bu backend'e bağlanıyor; arayüz kodunda değişiklik gerekmedi:
+
+| Uç nokta | Açıklama |
+|---|---|
+| `GET /api/health` | `modelSource: "MAE (PTB-XL, epoch 15)"`. Arayüz başlığında görünür |
+| `POST /api/chunk` | Senaryoya göre seçilen **gerçek PTB-XL test kaydı** (10 s, döngüyle akar); kopuk kanallar 0, rekonstrüksiyonları `reconstructed` alanında (MAE; ekstremite kanallarında Einthoven) |
+| `POST /api/predict` | Eğitilmiş MAE'nin teşhisi: `label`, `region`, `regions` (çoklu duvar), `wallProbabilities`, `stByLead` (mm), `attention` (Spatial Attention), `reconstruction` (`mae` / `einthoven`) + `groundTruth`, `ecgId` |
+| `POST /api/new-record` | Aynı senaryodan başka bir hastaya geç (arayüzde henüz düğme yok) |
+
+- Zilan'ın dosya yükleme uç noktası `/api/predict` → **`/api/predict-signal`** olarak yeniden adlandırıldı (ad çakışması).
+- Sema'nın `backend/` klasöründeki kural tabanlı motor olduğu gibi duruyor; ikinci bir karşılaştırma modeli olarak kullanılabilir.
+- **Testler:**
+  - `python -m pytest`: 28 test, arayüz sözleşmesi testi dahil.
+  - `cd backend && python -m unittest discover -s tests -t .`: Sema'nın 10 testi.
+- **Çalıştırma:** `python -m uvicorn src.main:app --port 8000` ve `npm run dev`, ardından http://localhost:5173
+
 ## API sözleşmesi
 
 ### `GET /api/sample-ecg`
@@ -31,7 +50,7 @@ Model, PTB-XL test setinden (strat_fold 10) gerçek bir kayıt seçer; bu kayıt
 
 Hastaya özel klinik PDF raporu üretir. Kayıt aynı kopmalarla yeniden analiz edilir; rapordaki her değer model çıktısıdır. Güven %70'in altındaysa raporda "karar sınırda" uyarısı çıkar.
 
-### `POST /api/predict`
+### `POST /api/predict-signal`
 
 Kullanıcının kendi EKG'si için. Gövde: `{"signal": 12×N mV, "fs": 100, "missing_leads": ["V1"]}`. Sinyal 100 Hz'e yeniden örneklenir ve 10 saniyeye kırpılır.
 
