@@ -164,8 +164,9 @@ class LeadFusing(nn.Module):
 
 class ECGMaskedAutoencoder(nn.Module):
     """
-    forward(x_masked, M) -> dict
-      recon            (B, 12, 1000) tüm derivasyonların rekonstrüksiyonu (z-score uzayında)  — Başlık A
+    forward(x_masked, M, sigma=None) -> dict
+      recon            (B, 12, 1000) tüm derivasyonların rekonstrüksiyonu — Başlık A
+                                     z-score uzayında; amplitude_aware=True ise mV / σ_pop ölçeğinde
       mi_logit         (B,)          MI var/yok                                                — Başlık B
       wall_logits      (B, 3)        kriz tipi: Anterior / Inferior / Lateral MI               — Başlık B
       spatial_attention (B, 12, 12)  son Spatial Attention katmanının ağırlıkları (sorgu × anahtar,
@@ -176,7 +177,8 @@ class ECGMaskedAutoencoder(nn.Module):
       M                (B, 12)       kullanılan maske
     """
 
-    def __init__(self, in_channels=12, seq_len=1000, embed_dim=128, depth=2, num_heads=4, dropout=0.1, use_stft=True):
+    def __init__(self, in_channels=12, seq_len=1000, embed_dim=128, depth=2, num_heads=4, dropout=0.1, use_stft=True,
+                 amplitude_aware=False, pop_sigma=None):
         super().__init__()
         if seq_len % 8 != 0:
             raise ValueError("seq_len 8'e tam bölünmeli (3 adet 2x örnek azaltma)")
@@ -197,6 +199,18 @@ class ECGMaskedAutoencoder(nn.Module):
         self.time_embed = nn.Parameter(torch.zeros(1, 1, self.num_tokens, D))
         self.blocks = nn.ModuleList([SpatioTemporalBlock(D, num_heads, dropout) for _ in range(depth)])
         self.norm = nn.LayerNorm(D)
+
+        # --- Genlik farkındalığı (isteğe bağlı) ---
+        # Derivasyon bazlı z-score (Md. 2.1) her kanalın genliğini siler; kopan kanalın genliği ise bilinemez.
+        # amplitude_aware=True: sağlam kanalların log-genliği (σ) lead token'larına eklenir ve rekonstrüksiyon
+        # fiziksel ölçekte üretilir: çıktı = mV / σ_pop (σ_pop: eğitim popülasyonunun derivasyon başına medyan σ'sı).
+        self.amplitude_aware = amplitude_aware
+        self.physical_recon = amplitude_aware
+        if amplitude_aware:
+            if pop_sigma is None:
+                raise ValueError("amplitude_aware=True için pop_sigma (12 değer) gerekli")
+            self.register_buffer("pop_sigma", torch.as_tensor(pop_sigma, dtype=torch.float32))
+            self.amp_embed = nn.Sequential(nn.Linear(2, D), nn.GELU(), nn.Linear(D, D))
 
         # --- IRC ara katman bağlantıları ---
         self.irc_fusing = LeadFusing(64, in_channels, num_heads)   # 250 çözünürlük, derivasyonlar arası birleştirme
@@ -219,7 +233,7 @@ class ECGMaskedAutoencoder(nn.Module):
         for p in (self.mask_token, self.lead_embed, self.time_embed):
             nn.init.trunc_normal_(p, std=0.02)
 
-    def forward(self, x, M=None):
+    def forward(self, x, M=None, sigma=None):
         if x.dim() == 2:
             x = x.unsqueeze(1)
         B, C, L = x.shape
@@ -241,6 +255,12 @@ class ECGMaskedAutoencoder(nn.Module):
         tokens = z.reshape(B, C, D, T).permute(0, 1, 3, 2)  # (B, C, T, D)
         tokens = torch.where(dropped.view(B, C, 1, 1), self.mask_token.expand(B, C, T, D), tokens)
         tokens = tokens + self.lead_embed + self.time_embed
+        if self.amplitude_aware:
+            if sigma is None:
+                raise ValueError("amplitude_aware model sağlam kanalların σ'sını ister")
+            log_amp = torch.log(sigma.to(x.dtype).clamp(min=1e-3) / self.pop_sigma.to(x.dtype)) * M  # kopanlar 0
+            amp = self.amp_embed(torch.stack([log_amp, M], dim=-1))                                # (B, C, D)
+            tokens = tokens + amp.unsqueeze(2)
         spatial_attention = None
         for i, blk in enumerate(self.blocks):
             tokens, w = blk(tokens, M, return_weights=(i == len(self.blocks) - 1))

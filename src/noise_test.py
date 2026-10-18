@@ -94,13 +94,19 @@ def add_noise(raw, sigma_clean, noise, snr_db, k, rng):
 
 
 @torch.no_grad()
-def predict(model, z, M, device, batch=128):
+def _sigma_kw(model, sigma, s, e, device):
+    if getattr(model, "amplitude_aware", False):
+        return {"sigma": torch.from_numpy(sigma[s:e]).float().to(device)}
+    return {}
+
+
+def predict(model, z, M, device, sigma, batch=128):
     """Sınıflandırma çıktıları (mi_logit, wall_logits), CPU tensörleri olarak."""
     mi, walls = [], []
     for s in range(0, len(z), batch):
         x = torch.from_numpy(z[s:s + batch]).float().to(device)
         m = torch.from_numpy(M[s:s + batch]).float().to(device)
-        out = model(x * m.unsqueeze(-1), m)
+        out = model(x * m.unsqueeze(-1), m, **_sigma_kw(model, sigma, s, s + batch, device))
         mi.append(out["mi_logit"].float().cpu())
         walls.append(out["wall_logits"].float().cpu())
     return {"mi_logit": torch.cat(mi), "wall_logits": torch.cat(walls)}
@@ -112,7 +118,7 @@ CHECK_GROUPS = [[0, 4, 8], [1, 5, 9], [2, 6, 10], [3, 7, 11]]  # (I,aVL,V3) (II,
 
 
 @torch.no_grad()
-def consistency_scores(model, z, device, batch=16):
+def consistency_scores(model, z, device, sigma, batch=16):
     """
     Derivasyon başına tutarlılık skoru: derivasyonun grubu maskelenip kalan 9 kanaldan MAE ile yeniden
     üretilir; gözlenen (z-score) sinyalle ortalama karesel farkı alınır. Yüksek skor = diğer kanallarla uyuşmuyor.
@@ -127,8 +133,14 @@ def consistency_scores(model, z, device, batch=16):
         b = x.shape[0]
         x_rep = x.repeat_interleave(G, dim=0)                                # (b*G, 12, L)
         m_rep = group_masks.repeat(b, 1)                                     # (b*G, 12)
+        kw = _sigma_kw(model, sigma, s, s + batch, device)
+        if kw:
+            kw["sigma"] = kw["sigma"].repeat_interleave(G, dim=0)
         with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type in ("mps", "cuda")):
-            recon = model(x_rep * m_rep.unsqueeze(-1), m_rep)["recon"].float()
+            recon = model(x_rep * m_rep.unsqueeze(-1), m_rep, **kw)["recon"].float()
+        if getattr(model, "physical_recon", False):  # fiziksel ölçek -> z (μ ≈ 0, filtre sonrası)
+            sig = kw["sigma"].unsqueeze(-1).clamp(min=1e-6)
+            recon = recon * model.pop_sigma.view(1, -1, 1) / sig
         err = ((recon - x_rep) ** 2).mean(dim=-1).reshape(b, G, 12)           # (b, G, 12)
         sel = (1 - group_masks).unsqueeze(0)                                  # yalnızca maskelenen kanalların hatası
         scores[s:s + b] = (err * sel).sum(dim=1).cpu().numpy()
@@ -177,8 +189,8 @@ def main():
 
     # 1) Tespit eşiklerinin kalibrasyonu: temiz doğrulama kayıtları (test setine dokunulmaz)
     val_raw, _ = load_split("val", args.processed_dir, args.ptbxl_dir)
-    val_z, _ = preprocess_all(val_raw)
-    thresholds = np.percentile(consistency_scores(model, val_z, device), DETECT_PERCENTILE, axis=0)
+    val_z, val_sigma = preprocess_all(val_raw)
+    thresholds = np.percentile(consistency_scores(model, val_z, device, val_sigma), DETECT_PERCENTILE, axis=0)
     print("Tespit eşikleri (doğrulama, %{:.0f}. yüzdelik): {}".format(
         DETECT_PERCENTILE, {n: round(float(t), 3) for n, t in zip(LEAD_NAMES, thresholds)}), flush=True)
 
@@ -186,10 +198,10 @@ def main():
     raw, target = load_split("test", args.processed_dir, args.ptbxl_dir)
     z_clean, sigma_clean = preprocess_all(raw)
     ones = np.ones(z_clean.shape[:2], dtype=np.float32)
-    clean = {"MAE": cls_metrics(predict(model, z_clean, ones, device), target, thr)}
+    clean = {"MAE": cls_metrics(predict(model, z_clean, ones, device, sigma_clean), target, thr)}
     if baseline is not None:
-        clean["1D-ResNet"] = cls_metrics(predict(baseline, z_clean, ones, device), target, bthr)
-    clean_scores = consistency_scores(model, z_clean, device)
+        clean["1D-ResNet"] = cls_metrics(predict(baseline, z_clean, ones, device, sigma_clean), target, bthr)
+    clean_scores = consistency_scores(model, z_clean, device, sigma_clean)
     clean_false_alarm = float((clean_scores > thresholds[None, :]).any(axis=1).mean())
     print(f"Temiz test: {clean}   tespit yanlış alarm (kayıt başına) %{100 * clean_false_alarm:.1f}", flush=True)
 
@@ -199,20 +211,20 @@ def main():
             for k in NOISY_COUNTS:
                 rng = np.random.default_rng([args.seed, list(NOISE_TYPES).index(ntype), snr + 100, k])
                 noisy_raw, noisy_mask = add_noise(raw, sigma_clean, noise[ntype], snr, k, rng)
-                z, _ = preprocess_all(noisy_raw)
+                z, sigma_noisy = preprocess_all(noisy_raw)
                 row = {"noise": ntype, "snr_db": snr, "k": k}
-                row["MAE"] = cls_metrics(predict(model, z, ones, device), target, thr)
+                row["MAE"] = cls_metrics(predict(model, z, ones, device, sigma_noisy), target, thr)
                 if baseline is not None:
-                    row["1D-ResNet"] = cls_metrics(predict(baseline, z, ones, device), target, bthr)
-                M_det = detect_mask(consistency_scores(model, z, device), thresholds)
-                row["MAE+tespit"] = cls_metrics(predict(model, z, M_det, device), target, thr)
+                    row["1D-ResNet"] = cls_metrics(predict(baseline, z, ones, device, sigma_noisy), target, bthr)
+                M_det = detect_mask(consistency_scores(model, z, device, sigma_noisy), thresholds)
+                row["MAE+tespit"] = cls_metrics(predict(model, z, M_det, device, sigma_noisy), target, thr)
                 flagged = M_det < 0.5
                 row["tespit"] = {
                     "duyarlilik": float((flagged & noisy_mask).sum() / noisy_mask.sum()),
                     "kesinlik": float((flagged & noisy_mask).sum() / max(flagged.sum(), 1)),
                 }
                 M_oracle = (~noisy_mask).astype(np.float32)
-                row["MAE+oracle"] = cls_metrics(predict(model, z, M_oracle, device), target, thr)
+                row["MAE+oracle"] = cls_metrics(predict(model, z, M_oracle, device, sigma_noisy), target, thr)
                 results.append(row)
                 base_f1 = f"{row['1D-ResNet']['f1']:.3f}" if baseline is not None else "-"
                 print(f"{NOISE_TYPES[ntype]:18s} SNR {snr:3d} dB  k={k} | F1  MAE {row['MAE']['f1']:.3f}  "

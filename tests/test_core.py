@@ -181,3 +181,29 @@ def test_best_f1_threshold_separable():
     labels = np.array([0] * 50 + [1] * 50)
     probs = np.concatenate([np.linspace(0.0, 0.3, 50), np.linspace(0.6, 1.0, 50)])
     assert 0.3 <= best_f1_threshold(labels, probs) <= 0.6
+
+
+# --- Genlik farkındalıklı model ----------------------------------------------------------------------
+
+def test_amplitude_aware_no_leakage_of_dropped_amplitude():
+    torch.manual_seed(0)
+    m = ECGMaskedAutoencoder(amplitude_aware=True, pop_sigma=[0.1] * 12).eval()
+    x, sigma = torch.randn(2, 12, 1000), torch.rand(2, 12) * 0.3 + 0.05
+    M = wall_keep_mask(2, "Lateral")
+    x2, sigma2 = x.clone(), sigma.clone()
+    x2[M < 0.5], sigma2[M < 0.5] = 50.0, 9.0         # kopan kanalın içeriği ve genliği ne olursa olsun
+    with torch.no_grad():
+        a, b = m(x, M, sigma=sigma), m(x2, M, sigma=sigma2)
+    for k in ["recon", "mi_logit", "wall_logits", "lead_importance"]:
+        assert torch.allclose(a[k], b[k], atol=1e-5), k
+    with torch.no_grad():                            # sağlam kanalın genliği ise çıktıyı etkilemeli
+        sigma3 = sigma.clone()
+        sigma3[:, 1] *= 3
+        c = m(x, M, sigma=sigma3)
+    assert not torch.allclose(a["recon"], c["recon"])
+
+
+def test_amplitude_aware_requires_sigma():
+    m = ECGMaskedAutoencoder(amplitude_aware=True, pop_sigma=[0.1] * 12)
+    with pytest.raises(ValueError):
+        m(torch.randn(1, 12, 1000), torch.ones(1, 12))

@@ -95,7 +95,8 @@ CONDITIONS = {
 def load_dataset():
     # İlk çağrıdaki GPU (MPS/CUDA) çekirdek derleme gecikmesini kullanıcı isteğinden önce öde
     with torch.no_grad():
-        model(torch.zeros(1, 12, SEQ_LEN, device=device), torch.ones(1, 12, device=device))
+        model(torch.zeros(1, 12, SEQ_LEN, device=device), torch.ones(1, 12, device=device),
+              **({"sigma": torch.ones(1, 12, device=device)} if getattr(model, "amplitude_aware", False) else {}))
     try:
         meta = pd.read_csv(os.path.join(PROCESSED_DIR, "meta.csv"), index_col="ecg_id")
         sigma = np.load(os.path.join(PROCESSED_DIR, "sigma.npy"))
@@ -147,12 +148,18 @@ def run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: li
 
     t0 = time.perf_counter()
     with torch.no_grad():
-        out = model(x * M.unsqueeze(-1), M)
+        extra = {"sigma": torch.tensor(np.asarray(sigma, dtype=np.float32), device=device).unsqueeze(0)} \
+            if getattr(model, "amplitude_aware", False) else {}
+        out = model(x * M.unsqueeze(-1), M, **extra)  # kopan kanalların σ'sı modelde maskelenir
     if device.type == "mps":
         torch.mps.synchronize()
     inference_ms = (time.perf_counter() - t0) * 1000
 
     recon_z = out["recon"][0].float().cpu().numpy()
+    if getattr(model, "physical_recon", False):
+        # Fiziksel ölçekli çıktı (mV / σ_pop) -> bu fonksiyonun z uzayına (kopanlar için σ = σ_pop, μ = 0)
+        pop = model.pop_sigma.cpu().numpy()[:, None]
+        recon_z = (recon_z * pop - mu[:, None]) / np.maximum(sigma[:, None], 1e-6)
     mi_prob = float(torch.sigmoid(out["mi_logit"]).item())
     wall_prob = torch.sigmoid(out["wall_logits"][0]).float().cpu().numpy()
     # Md. 2.5: XAI, Spatial Attention katmanının dikkat ağırlıklarından

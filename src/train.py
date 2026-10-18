@@ -54,6 +54,17 @@ def model_forward(model, x_masked, M, target):
     return model(x_masked, M)
 
 
+def recon_target(model, x, target):
+    """
+    Rekonstrüksiyon hedefi: z-score modelde z-score sinyal; genlik farkındalıklı modelde fiziksel ölçek
+    (mV / σ_pop). Kayıp her iki durumda da yalnızca kopan kanallarda MSE'dir (Rapor Md. 2.4).
+    """
+    if getattr(model, "physical_recon", False):
+        mv = x * target["sigma"].unsqueeze(-1) + target["mu"].unsqueeze(-1)
+        return mv / model.pop_sigma.view(1, -1, 1)
+    return x
+
+
 def recon_to_mv(recon, pop_sigma):
     """
     Gerçekçi mV rekonstrüksiyonu: kopan derivasyonun gerçek genliği bilinemez, popülasyon σ'sı kullanılır
@@ -92,7 +103,7 @@ def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, a
         with autocast(device, amp):
             out = model_forward(model, apply_lead_mask(x, M), M, target)
         out = _float_outputs(out)
-        loss, parts = criterion(out, x, target)
+        loss, parts = criterion(out, recon_target(model, x, target), target)
         totals["loss"] += loss.item()
         for k in ("rec", "cls", "wall"):
             totals[k] += parts[k]
@@ -148,6 +159,8 @@ def main():
     parser.add_argument("--no-amp", action="store_true", help="bfloat16 karışık hassasiyeti kapat")
     parser.add_argument("--limit-batches", type=int, default=None, help="Epoch başına batch sınırı (deneme için)")
     parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--amplitude-aware", action="store_true",
+                        help="Sağlam kanalların genliğini modele ver, rekonstrüksiyonu fiziksel ölçekte üret")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -182,6 +195,8 @@ def main():
 
     if args.arch == "mae":
         config = dict(in_channels=12, seq_len=1000, embed_dim=128, depth=2, num_heads=4)
+        if args.amplitude_aware:
+            config.update(amplitude_aware=True, pop_sigma=population_sigma(args.processed_dir).tolist())
         alpha_mse = args.alpha_mse
     else:
         config = dict(in_channels=12)
@@ -226,8 +241,8 @@ def main():
             x_masked, x, M = x_masked.to(device), x.to(device), M.to(device)
             target = {k: v.to(device) for k, v in target.items()}
             with autocast(device, amp):
-                out = model(x_masked, M)
-            loss, parts = criterion(_float_outputs(out), x, target)
+                out = model_forward(model, x_masked, M, target)
+            loss, parts = criterion(_float_outputs(out), recon_target(model, x, target), target)
 
             optimizer.zero_grad()
             loss.backward()
