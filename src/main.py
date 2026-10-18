@@ -10,8 +10,15 @@ import pandas as pd
 import os
 import io
 import random
+import sys
 import threading
 import time
+
+# Windows'ta çıktı yönlendirildiğinde (servis, IDE, log dosyası) konsol kodlaması cp1254 olur ve
+# ✓ / ⚠ gibi karakterler UnicodeEncodeError ile servisi açılışta çökertir.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -25,6 +32,7 @@ from src.einthoven import einthoven_complete
 from src.preprocessing import preprocess_ecg
 from src.st_analysis import MV_PER_MM, st_deviation_mv
 from src.train import load_checkpoint
+from src.calibrate_walls import load_wall_thresholds
 
 # --------------------------------------------------------------------------
 # 1. Uygulama ve CORS Yapılandırması
@@ -49,19 +57,26 @@ device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if
 MODEL_PATH = "models/mae_ecg_checkpoint.pth"
 PROCESSED_DIR = "data/processed"
 DEMO_DIR = "data/demo"  # tam önbellek yoksa: repodaki küçük demo seti (python -m src.make_demo_data)
-WALL_THRESHOLD = 0.5  # kriz tipi: P(duvar | MI) bu eşiği geçen duvarlar etkilenmiş sayılır
+WALL_THRESHOLDS_PATH = "models/wall_thresholds.json"  # python -m src.calibrate_walls (doğrulama seti)
+# Kriz tipi: P(duvar | MI) duvarın eşiğini geçerse duvar etkilenmiş sayılır. Kalibrasyon dosyası yoksa 0.5.
+WALL_THRESHOLDS = {w: 0.5 for w in WALL_NAMES}
+
+
 
 model, MODEL_LOADED, DECISION_THRESHOLD = ECGMaskedAutoencoder().to(device).eval(), False, 0.5
 MODEL_SOURCE = "MAE (eğitilmemiş)"
 if os.path.exists(MODEL_PATH):
     try:
         model, _ckpt = load_checkpoint(MODEL_PATH, device)
-        MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
-        MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
-        print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f})")
     except Exception as e:
         print(f"⚠ Uyarı: Checkpoint yeni model mimarisiyle uyumsuz ({type(e).__name__}). "
               "`python -m src.train` ile yeniden eğitin. Eğitilmemiş ağırlıklarla (mock) çalışılıyor.")
+    else:
+        MODEL_LOADED, DECISION_THRESHOLD = True, float(_ckpt.get("threshold", 0.5))
+        MODEL_SOURCE = f"MAE (PTB-XL, epoch {_ckpt['epoch']})"
+        WALL_THRESHOLDS.update(load_wall_thresholds(WALL_THRESHOLDS_PATH, MODEL_PATH))
+        print(f"✓ EKG MAE Modeli yüklendi (epoch {_ckpt['epoch']}, karar eşiği {DECISION_THRESHOLD:.2f}, "
+              f"duvar eşikleri {', '.join(f'{w} {t:.2f}' for w, t in WALL_THRESHOLDS.items())})")
 else:
     print("⚠ Uyarı: Model ağırlık dosyası bulunamadı. Eğitilmemiş ağırlıklarla (mock) çalışılıyor.")
 
@@ -205,7 +220,7 @@ def _run_inference(z: np.ndarray, mu: np.ndarray, sigma: np.ndarray, disabled: l
     damage = {w: mi_prob * float(wall_prob[i]) for i, w in enumerate(WALL_NAMES)}
     top_wall = max(damage, key=damage.get)
     # Birden fazla duvar etkilenmiş olabilir: P(duvar | MI) ≥ 0.5 olan tüm duvarlar (yoksa en olası duvar)
-    affected_walls = [w for i, w in enumerate(WALL_NAMES) if wall_prob[i] >= WALL_THRESHOLD] or [top_wall]
+    affected_walls = [w for i, w in enumerate(WALL_NAMES) if wall_prob[i] >= WALL_THRESHOLDS[w]] or [top_wall]
     if not is_mi:
         affected_walls = []
 

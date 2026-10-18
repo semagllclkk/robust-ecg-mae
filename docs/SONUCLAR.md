@@ -155,3 +155,30 @@ python -m src.train --arch resnet1d            # karşılaştırma, ~5 dk
 python -m src.evaluate --baseline models/resnet1d_baseline.pth
 python -m src.noise_test --baseline models/resnet1d_baseline.pth   # gürültü testi, ~70 dk (M3)
 ```
+
+## Duvar eşiği ve çıkarım süresi notları (18.10.2026)
+
+### Lateral duvarın kaçırılması
+API'de her duvar için aynı eşik kullanılıyordu: P(duvar ∣ MI) ≥ 0.5. Demo setinin 213 test kaydında arayüzün kullandığı kod yolu (`analyze_row`) ile ölçüm:
+
+| | 12 kanal | Rastgele 2 kanal kopuk |
+|---|---|---|
+| MI tespiti (172 MI) | 158 doğru, 14 kaçırıldı (%8) | 156 doğru, 16 kaçırıldı |
+| Duvar: tam eşleşme / kısmi / tamamen yanlış | 86 / 25 / 8 | 83 / 25 / 9 |
+
+MI tespiti yukarıdaki FNR (0.075) ile tutarlı. Duvar hatalarının kaynağı Lateral:
+- Yalnız Lateral MI olan 9 kaydın hiçbirinde Lateral işaretlenmedi; 6'sı Anterior olarak verildi.
+- Anterior+Lateral olan 7 kaydın hepsi yalnız Anterior olarak verildi.
+- Bu kayıtlarda P(Lateral ∣ MI) 0.30–0.41 aralığında; 0.5 eşiğinin altında kalıyor.
+
+Kod hatası değil: duvar sırası eğitim ve API'de aynı (`WALL_NAMES`). Lateral MI seyrek olduğundan model bu duvara düşük olasılık veriyor. Tek bir 0.5 eşiği seyrek sınıf için fazla yüksek.
+
+**Düzeltme:** `python -m src.calibrate_walls` her duvar için F1'i en büyükleyen eşiği **doğrulama setinde** (fold 9) seçer. Bu, MI karar eşiğiyle aynı yöntemdir; test setine dokunulmaz. Sonuç `models/wall_thresholds.json` dosyasına yazılır ve API bu dosyayı bulunca kullanır. Dosya yoksa davranış değişmez (0.5). Kalibrasyon için `data/processed` gerekir; demo setinde doğrulama kaydı yok.
+
+### Çıkarım süresi (Risk 2)
+- **M3 (MPS):** 13–22 ms, hedef < 50 ms ✓.
+- **Intel dizüstü CPU (10 çekirdek):**
+  - PyTorch: en iyi 70–90 ms; ölçümler iş parçacığı sayısına göre dalgalı.
+  - ONNX Runtime (`python -m src.export_onnx`): benzer süre (~80–95 ms). Çıktılar PyTorch ile özdeş (en büyük fark 5·10⁻⁶).
+  - Dinamik int8 nicemleme: daha yavaş (~216 ms) ve 173 kaydın 10'unda kararı değiştiriyor; kullanılmadı.
+- **Sonuç:** 50 ms hedefi GPU'lu geliştirme donanımında sağlanıyor; yalnız CPU'lu bilgisayarda bu model ~80 ms'de çalışıyor. API aynı kayıt ve kopma için sonucu önbellekten verdiği için arayüzde tekrarlanan isteklerde gecikme hissedilmiyor.
