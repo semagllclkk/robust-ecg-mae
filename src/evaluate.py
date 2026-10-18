@@ -167,7 +167,10 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
     with open(os.path.join(args.out_dir, "test_results.json"), "w") as f:
-        json.dump({"mae": results, "resnet1d": baseline, "fnr_reduction": fnr_reduction,
+        drop = [k for k in results if not k.startswith("0 kopuk")]
+        pooled = ({m: float(np.mean([r[k]["fnr"] for k in drop])) for m, r in (("mae", results), ("resnet1d", baseline))}
+                  if baseline is not None else None)
+        json.dump({"mae": results, "resnet1d": baseline, "fnr_reduction": fnr_reduction, "fnr_pooled": pooled,
                    "threshold": ckpt["threshold"]}, f, indent=2, ensure_ascii=False)
     plot_path = os.path.join(args.out_dir, "reconstruction_anterior.png")
     plot_reconstruction(model, test_set, device, plot_path, wall="Anterior")
