@@ -48,6 +48,7 @@ app.add_middleware(
 device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
 MODEL_PATH = "models/mae_ecg_checkpoint.pth"
 PROCESSED_DIR = "data/processed"
+DEMO_DIR = "data/demo"  # tam önbellek yoksa: repodaki küçük demo seti (python -m src.make_demo_data)
 WALL_THRESHOLD = 0.5  # kriz tipi: P(duvar | MI) bu eşiği geçen duvarlar etkilenmiş sayılır
 
 model, MODEL_LOADED, DECISION_THRESHOLD = ECGMaskedAutoencoder().to(device).eval(), False, 0.5
@@ -102,21 +103,25 @@ def load_dataset():
     with torch.no_grad():
         model(torch.zeros(1, 12, SEQ_LEN, device=device), torch.ones(1, 12, device=device),
               **({"sigma": torch.ones(1, 12, device=device)} if getattr(model, "amplitude_aware", False) else {}))
-    try:
-        meta = pd.read_csv(os.path.join(PROCESSED_DIR, "meta.csv"), index_col="ecg_id")
-        sigma = np.load(os.path.join(PROCESSED_DIR, "sigma.npy"))
-        store["meta"] = meta.reset_index()
-        store["X"] = np.load(os.path.join(PROCESSED_DIR, "X.npy"), mmap_mode="r")
-        store["mu"] = np.load(os.path.join(PROCESSED_DIR, "mu.npy"))
-        store["sigma"] = sigma
-        # Kopan kanalın gerçek genliği bilinemez: mV'a çevirirken eğitim popülasyonunun medyan std'si kullanılır
-        store["pop_sigma"] = np.median(sigma[(meta["split"] == "train").to_numpy()], axis=0)
-        test = store["meta"]["split"] == "test"
-        store["pools"] = {c: np.flatnonzero((test & f(store["meta"])).to_numpy()) for c, f in CONDITIONS.items()}
-        print(f"✓ Önişlenmiş PTB-XL test seti yüklendi: { {c: len(v) for c, v in store['pools'].items()} }")
-    except FileNotFoundError:
-        print("⚠ data/processed bulunamadı. `python -m src.prepare_data` çalıştırın. "
-              "/api/sample-ecg kullanılamaz, /api/predict çalışır.")
+    data_dir = next((d for d in (PROCESSED_DIR, DEMO_DIR) if os.path.exists(os.path.join(d, "meta.csv"))), None)
+    if data_dir is None:
+        print("⚠ Ne data/processed ne data/demo bulundu. `python -m src.prepare_data` çalıştırın. "
+              "Arayüzün canlı EKG'si çalışmaz; /api/predict-signal çalışır.")
+        return
+    meta = pd.read_csv(os.path.join(data_dir, "meta.csv"), index_col="ecg_id")
+    sigma = np.load(os.path.join(data_dir, "sigma.npy"))
+    store["meta"] = meta.reset_index()
+    store["X"] = np.load(os.path.join(data_dir, "X.npy"), mmap_mode="r")
+    store["mu"] = np.load(os.path.join(data_dir, "mu.npy"))
+    store["sigma"] = sigma
+    store["data_source"] = "PTB-XL test seti (tam)" if data_dir == PROCESSED_DIR else "PTB-XL test seti (demo alt kümesi)"
+    # Kopan kanalın gerçek genliği bilinemez: mV'a çevirirken eğitim popülasyonunun medyan std'si kullanılır
+    pop_path = os.path.join(data_dir, "pop_sigma.npy")
+    store["pop_sigma"] = (np.load(pop_path) if os.path.exists(pop_path)
+                          else np.median(sigma[(meta["split"] == "train").to_numpy()], axis=0))
+    test = store["meta"]["split"] == "test"
+    store["pools"] = {c: np.flatnonzero((test & f(store["meta"])).to_numpy()) for c, f in CONDITIONS.items()}
+    print(f"✓ {store['data_source']} yüklendi ({data_dir}): { {c: len(v) for c, v in store['pools'].items()} }")
 
 
 # --------------------------------------------------------------------------
@@ -413,7 +418,7 @@ def _ui_analysis(condition: str, disconnected: list[int]) -> dict:
 @app.get("/api/health")
 def health():
     return {"status": "ok", "modelSource": MODEL_SOURCE, "modelLoaded": MODEL_LOADED,
-            "sampleRate": FS, "leads": LEAD_NAMES}
+            "dataSource": store.get("data_source"), "sampleRate": FS, "leads": LEAD_NAMES}
 
 
 @app.post("/api/chunk")

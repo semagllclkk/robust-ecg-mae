@@ -31,7 +31,14 @@ Eğitim ve API aynı anda çalışırsa ikisi de çok yavaşlar, çünkü Apple 
 - **Testler:**
   - `python -m pytest`: 28 test, arayüz sözleşmesi testi dahil.
   - `cd backend && python -m unittest discover -s tests -t .`: Sema'nın 10 testi.
-- **Çalıştırma:** `python -m uvicorn src.main:app --port 8000` ve `npm run dev`, ardından http://localhost:5173
+- **Çalıştırma (yeni bir bilgisayarda):**
+  ```bash
+  pip install -r requirements.txt
+  npm install
+  python -m uvicorn src.main:app --port 8000   # 1. terminal
+  npm run dev                                  # 2. terminal → http://localhost:5173
+  ```
+  PTB-XL'i indirmek **gerekmez**. Repodaki `data/demo/` (213 gerçek test kaydı, 10 MB) arayüz için yeterli; backend tam önbelleği (`data/processed/`, ~1 GB) bulamazsa otomatik olarak bunu kullanır. Tam veri yalnızca eğitim ve `src.evaluate` / `src.noise_test` için gerekir (`python -m src.prepare_data`).
 
 ## API sözleşmesi
 
