@@ -23,7 +23,7 @@ const LAYERS = [
   ['inner', 'Kapaklar'],
 ];
 
-function WallProbabilities({ prediction, highlightedRegion, onSelect, onReset, disconnectedLeads }) {
+function WallProbabilities({ prediction, modelWalls, highlightedWalls, onSelect, onReset, disconnectedLeads }) {
   return (
     <Panel
       actions={
@@ -36,7 +36,9 @@ function WallProbabilities({ prediction, highlightedRegion, onSelect, onReset, d
       <div className="flex flex-col gap-1">
         {Object.entries(WALLS).map(([wall, meta]) => {
           const probability = prediction?.wallProbabilities?.[wall] ?? 0;
-          const active = highlightedRegion === wall;
+          const active = highlightedWalls.includes(wall);
+          // Duvarın etkilendiğine model karar verir (duvar başına kalibre eşik); çubuk hasar olasılığını gösterir
+          const affected = modelWalls.includes(wall);
           const missing = WALL_LEADS[wall].filter((lead) => disconnectedLeads.includes(lead));
           return (
             <button
@@ -50,11 +52,11 @@ function WallProbabilities({ prediction, highlightedRegion, onSelect, onReset, d
             >
               <div className="mb-1.5 flex items-baseline justify-between gap-2">
                 <span className="text-xs font-medium text-text">{meta.label}</span>
-                <span className={`num text-xs ${probability >= 0.5 ? 'font-semibold text-danger' : 'text-muted'}`}>
+                <span className={`num text-xs ${affected ? 'font-semibold text-danger' : 'text-muted'}`}>
                   %{Math.round(probability * 100)}
                 </span>
               </div>
-              <ProbabilityBar tone={probability >= 0.5 ? 'danger' : 'subtle'} value={probability} />
+              <ProbabilityBar tone={affected ? 'danger' : 'subtle'} value={probability} />
               <div className="mt-1 flex justify-between text-[11px] text-subtle">
                 <span>
                   {meta.leads} · {meta.artery}
@@ -72,7 +74,7 @@ function WallProbabilities({ prediction, highlightedRegion, onSelect, onReset, d
 }
 
 export default function AnatomicHeart({ disconnectedLeads = [], prediction = null, scenario }) {
-  const [highlightedRegion, setHighlightedRegion] = useState(null);
+  const [selectedWall, setSelectedWall] = useState(null);
   const [userOverride, setUserOverride] = useState(false);
   const [cameraView, setCameraView] = useState('anterior');
   const [beatActive, setBeatActive] = useState(true);
@@ -87,10 +89,23 @@ export default function AnatomicHeart({ disconnectedLeads = [], prediction = nul
     setUserOverride(false);
   }, [scenario]);
 
-  // Model hasar tespit ettiğinde ilgili duvar otomatik vurgulanır (rapor 2.5)
-  useEffect(() => {
-    if (!userOverride) setHighlightedRegion(prediction?.region ?? null);
-  }, [prediction?.region, userOverride]);
+  // Model hasar tespit ettiğinde etkilenen tüm duvarlar otomatik vurgulanır (rapor 2.5); kullanıcı
+  // bir duvar seçerse yalnızca o duvar gösterilir. Vurgu şiddeti duvarın hasar olasılığıdır.
+  const modelWalls = useMemo(
+    () => prediction?.regions ?? (prediction?.region ? [prediction.region] : []),
+    [prediction],
+  );
+  const highlightedWalls = userOverride ? (selectedWall ? [selectedWall] : []) : modelWalls;
+  const highlights = useMemo(
+    () =>
+      Object.fromEntries(
+        highlightedWalls.map((wall) => [
+          wall,
+          userOverride ? 1 : Math.max(0.55, prediction?.wallProbabilities?.[wall] ?? 1),
+        ]),
+      ),
+    [highlightedWalls, userOverride, prediction],
+  );
 
   // Kablosu kopan derivasyonların ait olduğu duvarlar
   const affectedRegions = useMemo(
@@ -136,12 +151,7 @@ export default function AnatomicHeart({ disconnectedLeads = [], prediction = nul
               bpm={bpm}
               cameraView={cameraView}
               explode={explodeValue}
-              highlightedRegion={highlightedRegion}
-              highlightStrength={
-                highlightedRegion && prediction?.wallProbabilities && !userOverride
-                  ? Math.max(0.55, prediction.wallProbabilities[highlightedRegion] ?? 1)
-                  : 1
-              }
+              highlights={highlights}
               layers={layers}
               onLoaded={() => setModelLoaded(true)}
               onSelectInfo={setSelectedInfo}
@@ -166,14 +176,15 @@ export default function AnatomicHeart({ disconnectedLeads = [], prediction = nul
       <div className="flex flex-col gap-4">
         <WallProbabilities
           disconnectedLeads={disconnectedLeads}
-          highlightedRegion={highlightedRegion}
+          highlightedWalls={highlightedWalls}
+          modelWalls={modelWalls}
           onReset={() => {
             setUserOverride(false);
-            setHighlightedRegion(prediction?.region ?? null);
+            setSelectedWall(null);
           }}
           onSelect={(wall) => {
             setUserOverride(true);
-            setHighlightedRegion((current) => (current === wall ? null : wall));
+            setSelectedWall((current) => (userOverride && current === wall ? null : wall));
           }}
           prediction={prediction}
         />

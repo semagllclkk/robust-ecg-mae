@@ -11,8 +11,9 @@ import { LEADS, WALL_LEADS } from '../data/ecg.js';
  *   chunk({ start, count, condition, disconnectedLeads })
  *     → { data: number[12][count], reconstructed: { [leadIndex]: number[count] } }
  *   predict({ condition, disconnectedLeads })
- *     → { label, region, artery, confidence, stDeviation, stByLead[12],
+ *     → { label, region, regions, artery, confidence, stDeviation, stByLead[12],
  *         attention[12], wallProbabilities, reconstruction, modelSource }
+ *     FastAPI ayrıca: reconstructionSources, report.warning, groundTruth, ecgId
  */
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -245,9 +246,14 @@ const mockApi = {
     );
     const total = rawAttention.reduce((s, v) => s + v, 0);
 
+    const regions = region
+      ? Object.keys(wallProbabilities).filter((wall) => wallProbabilities[wall] >= 0.5)
+      : [];
+
     return {
-      label: region ? WALL_LABELS[region] : 'Normal Sinüs Ritmi',
+      label: region ? regions.map((wall) => WALL_LABELS[wall].replace(' MI', '')).join(' + ') + ' MI' : 'Normal Sinüs Ritmi',
       region,
+      regions,
       artery: region ? WALL_ARTERY[region] : null,
       confidence: Math.min(0.99, Math.max(0.5, confidence)),
       stDeviation: region ? Math.max(...WALL_LEADS[region].map((i) => st[i])) : 0,
