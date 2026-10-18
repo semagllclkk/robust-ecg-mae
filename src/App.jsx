@@ -15,6 +15,8 @@ export default function App() {
   const [streamStatus, setStreamStatus] = useState('Bağlanıyor…');
   const [backend, setBackend] = useState({ mode: 'probing', modelSource: null });
   const [notice, setNotice] = useState(null);
+  const [recordKey, setRecordKey] = useState(0);
+  const [changingPatient, setChangingPatient] = useState(false);
 
   const updateStreamStatus = useCallback((status) => setStreamStatus(status), []);
 
@@ -41,7 +43,20 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [scenario, disconnectedLeads]);
+  }, [scenario, disconnectedLeads, recordKey]);
+
+  async function showNewPatient() {
+    setChangingPatient(true);
+    try {
+      await api.newRecord({ condition: scenario });
+      setRecordKey((key) => key + 1); // EKG akışı ve tahmin yeni kayıtla yeniden alınır
+    } catch (error) {
+      console.error('Yeni hasta kaydı alınamadı:', error);
+      setNotice('Yeni hasta kaydı alınamadı.');
+    } finally {
+      setChangingPatient(false);
+    }
+  }
 
   function toggleLead(index) {
     setDisconnectedLeads((current) => {
@@ -80,7 +95,14 @@ export default function App() {
             onReconnectAll={() => setDisconnectedLeads([])}
             onToggleLead={toggleLead}
           />
-          <ScenarioPanel onScenarioChange={setScenario} scenario={scenario} />
+          <ScenarioPanel
+            canChangePatient={backend.mode === 'fastapi'}
+            changingPatient={changingPatient}
+            ecgId={prediction?.ecgId}
+            onNewPatient={showNewPatient}
+            onScenarioChange={setScenario}
+            scenario={scenario}
+          />
           <DiagnosisPanel disconnectedLeads={disconnectedLeads} prediction={prediction} />
         </>
       }
@@ -89,6 +111,7 @@ export default function App() {
       <ECGCanvas
         disconnectedLeads={disconnectedLeads}
         onApiStatusChange={updateStreamStatus}
+        recordKey={recordKey}
         scenario={scenario}
       />
       <AnatomicHeart disconnectedLeads={disconnectedLeads} prediction={prediction} scenario={scenario} />
