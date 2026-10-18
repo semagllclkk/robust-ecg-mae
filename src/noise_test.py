@@ -93,13 +93,13 @@ def add_noise(raw, sigma_clean, noise, snr_db, k, rng):
     return noisy, noisy_mask
 
 
-@torch.no_grad()
 def _sigma_kw(model, sigma, s, e, device):
     if getattr(model, "amplitude_aware", False):
         return {"sigma": torch.from_numpy(sigma[s:e]).float().to(device)}
     return {}
 
 
+@torch.no_grad()
 def predict(model, z, M, device, sigma, batch=128):
     """Sınıflandırma çıktıları (mi_logit, wall_logits), CPU tensörleri olarak."""
     mi, walls = [], []
