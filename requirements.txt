@@ -8,3 +8,9 @@ matplotlib
 fastapi
 uvicorn
 reportlab
+# Testler (python -m pytest)
+pytest
+httpx
+# İsteğe bağlı — Risk 2 B planı, ONNX dışa aktarımı (python -m src.export_onnx)
+# onnx
+# onnxruntime
