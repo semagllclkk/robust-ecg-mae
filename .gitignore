@@ -1,4 +1,14 @@
 node_modules/
 dist/
 
+# Python
+__pycache__/
+*.pyc
+
+# Veri (PTB-XL ~3 GB, önişlenmiş önbellek ~1 GB; yeniden üretilebilir)
+data/ptbxl/
 data/processed*/
+
+# Sistem / araç
+.DS_Store
+.claude/

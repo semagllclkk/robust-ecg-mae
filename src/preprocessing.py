@@ -55,39 +55,41 @@ def preprocess_ecg(signal, fs=100):
     return z.astype(np.float32), mu.astype(np.float32), sigma.astype(np.float32)
 
 
-def test_filtering(data_dir='data/raw'):
+def test_filtering(record="data/ptbxl/records100/00000/00001_lr", lead=0, out_path="results/filtered_ecg_comparison.png"):
+    """
+    Ham ve 0.5–45 Hz filtrelenmiş EKG'yi karşılaştıran grafik (İP1 / İP6 raporu için).
+    Çalıştırma: python -m src.preprocessing
+    """
+    import matplotlib
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import wfdb
 
-    record_path = os.path.join(data_dir, "00001_lr")
-    if not os.path.exists(record_path + ".hea"):
-        print("Sinyal dosyası bulunamadı. Önce data_loader.py çalıştırılmalı!")
+    if not os.path.exists(record + ".hea"):
+        print(f"Kayıt bulunamadı: {record}.hea — PTB-XL data/ptbxl/ altına çıkarılmalı.")
         return
 
-    record = wfdb.rdrecord(record_path)
-    raw_signal = record.p_signal[:1000, 0]  # İlk 1000 örnek, Lead I
+    rec = wfdb.rdrecord(record)
+    raw = rec.p_signal[:, lead]
+    filtered = butter_bandpass_filter(raw, fs=rec.fs)
+    t = np.arange(len(raw)) / rec.fs
+    name = rec.sig_name[lead]
 
-    filtered_signal = butter_bandpass_filter(raw_signal, fs=record.fs)
-
-    plt.figure(figsize=(12, 6))
-
-    plt.subplot(2, 1, 1)
-    plt.plot(raw_signal, color='gray', label='Ham Sinyal (Raw)')
-    plt.title("Ham EKG Sinyali")
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend()
-
-    plt.subplot(2, 1, 2)
-    plt.plot(filtered_signal, color='green', label=f'Filtrelenmiş Sinyal (Bandpass {LOWCUT_HZ}-{HIGHCUT_HZ:g} Hz)')
-    plt.title("Filtrelenmiş Temiz EKG Sinyali")
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend()
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(data_dir, "filtered_ecg_comparison.png"))
-    print("Filtreleme karşılaştırma grafiği 'data/raw/filtered_ecg_comparison.png' olarak kaydedildi!")
-    plt.show()
+    fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+    axes[0].plot(t, raw, color="gray", linewidth=0.9)
+    axes[0].set_title(f"Ham EKG Sinyali ({name}, {os.path.basename(record)})")
+    axes[1].plot(t, filtered, color="green", linewidth=0.9)
+    axes[1].set_title(f"Filtrelenmiş Sinyal (Butterworth {LOWCUT_HZ}–{HIGHCUT_HZ:g} Hz, {FILTER_ORDER}. derece, çift yönlü)")
+    axes[1].set_xlabel("Zaman (sn)")
+    for ax in axes:
+        ax.set_ylabel("mV")
+        ax.grid(True, linestyle="--", alpha=0.6)
+    fig.tight_layout()
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+    print(f"Filtreleme karşılaştırma grafiği kaydedildi: {out_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_filtering()
