@@ -33,6 +33,7 @@ import wfdb
 from scipy.signal import resample_poly
 
 from src.ecg_constants import FS, LEAD_NAMES
+from src.calibrate_walls import checkpoint_sha256
 from src.metrics import ClassificationMeter
 from src.prepare_data import find_ptbxl_root, load_record
 from src.preprocessing import preprocess_ecg
@@ -205,10 +206,28 @@ def main():
     clean_false_alarm = float((clean_scores > thresholds[None, :]).any(axis=1).mean())
     print(f"Temiz test: {clean}   tespit yanlış alarm (kayıt başına) %{100 * clean_false_alarm:.1f}", flush=True)
 
+    # Kaldığı yerden devam: her senaryo bitince diske yazılır; yeniden başlatılınca biten senaryolar atlanır.
+    # Kayıtlar modelin parmak iziyle eşleştirilir; başka bir modelin yarım sonuçları kullanılmaz.
+    os.makedirs(args.out_dir, exist_ok=True)
+    partial_path = os.path.join(args.out_dir, "partial_rows.jsonl")
+    fingerprint = f"{checkpoint_sha256(args.checkpoint)}:{args.seed}"
+    done = {}
+    if os.path.exists(partial_path):
+        with open(partial_path) as f:
+            for line in f:
+                rec = json.loads(line)
+                if rec.get("fingerprint") == fingerprint:
+                    done[(rec["row"]["noise"], rec["row"]["snr_db"], rec["row"]["k"])] = rec["row"]
+        print(f"Kaldığı yerden devam: {len(done)}/{len(NOISE_TYPES) * len(SNR_LEVELS) * len(NOISY_COUNTS)} senaryo "
+              "önceki çalıştırmadan alındı", flush=True)
+
     results = []
     for ntype in NOISE_TYPES:
         for snr in SNR_LEVELS:
             for k in NOISY_COUNTS:
+                if (ntype, snr, k) in done:
+                    results.append(done[(ntype, snr, k)])
+                    continue
                 rng = np.random.default_rng([args.seed, list(NOISE_TYPES).index(ntype), snr + 100, k])
                 noisy_raw, noisy_mask = add_noise(raw, sigma_clean, noise[ntype], snr, k, rng)
                 z, sigma_noisy = preprocess_all(noisy_raw)
@@ -226,17 +245,19 @@ def main():
                 M_oracle = (~noisy_mask).astype(np.float32)
                 row["MAE+oracle"] = cls_metrics(predict(model, z, M_oracle, device, sigma_noisy), target, thr)
                 results.append(row)
+                with open(partial_path, "a") as f:
+                    f.write(json.dumps({"fingerprint": fingerprint, "row": row}) + "\n")
                 base_f1 = f"{row['1D-ResNet']['f1']:.3f}" if baseline is not None else "-"
                 print(f"{NOISE_TYPES[ntype]:18s} SNR {snr:3d} dB  k={k} | F1  MAE {row['MAE']['f1']:.3f}  "
                       f"ResNet {base_f1}  MAE+tespit {row['MAE+tespit']['f1']:.3f}  "
                       f"oracle {row['MAE+oracle']['f1']:.3f} | tespit duyarlılık %{100 * row['tespit']['duyarlilik']:.0f} "
                       f"kesinlik %{100 * row['tespit']['kesinlik']:.0f}  ({time.time() - t0:.0f} sn)", flush=True)
 
-    os.makedirs(args.out_dir, exist_ok=True)
     with open(os.path.join(args.out_dir, "noise_results.json"), "w") as f:
         json.dump({"clean": clean, "clean_detection_false_alarm": clean_false_alarm,
                    "detect_thresholds": dict(zip(LEAD_NAMES, thresholds.tolist())),
                    "threshold": thr, "baseline_threshold": bthr, "results": results}, f, indent=2, ensure_ascii=False)
+    os.remove(partial_path)  # tüm senaryolar tamamlandı; ara kayıt artık gereksiz
     summarize(results, clean, args.out_dir)
     plot_example(raw, sigma_clean, noise, args.out_dir)
     print(f"\nSonuçlar: {args.out_dir}/noise_results.json, noise_f1.png, noise_example.png  ({time.time() - t0:.0f} sn)")
