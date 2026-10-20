@@ -3,7 +3,7 @@
 
 Tüm şekiller mevcut sonuç dosyalarından çizilir; model veya GPU gerekmez:
     models/mae_ecg_checkpoint_history.csv, models/resnet1d_baseline_history.csv   eğitim eğrileri
-    results/test_results.json                                                       test stres testleri
+    results/test_results.json, results/v1/test_results.json                        test stres testleri
     results/noise/noise_results.json                                                gürültü testi
 Çıktı: results/figures/*.png (300 dpi, bildiri ve rapor için)
 
@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 OUT = "results/figures"
+V1_RESULTS = "results/v1/test_results.json"  # önceki (z-score çıkışlı) modelin test sonuçları
 
 # Renkler: doğrulanmış kategorik palet (sabit sıra), açık yüzey; metin rengi seri renginden bağımsız
 SURFACE, INK, INK_2, GRID = "#fcfcfb", "#0b0b0b", "#5f5e5a", "#e4e3df"
@@ -106,9 +107,9 @@ def fig_training_curves():
     ax.plot(mae.epoch, mae.val_r2, color=C_MAE, marker="o", markersize=4)
     ax.set_title("Doğrulama rekonstrüksiyon R²")
     ax.set_xlabel("Epoch")
-    ax.set_ylabel("R² (kopan kanallar, oracle genlik)")
+    ax.set_ylabel("R² (kopan kanallar, gerçekçi, mV)")
     fig.text(0.5, -0.04, "Doğrulama: strat_fold 9, dengeli MI/Normal, batch başına 1–4 kanal kopması (%30 kritik duvar). "
-             "R² eğitim sırasında oracle genlikle izlenmiştir; gerçekçi test değerleri Şekil 4'tedir.",
+             "Genlik farkındalıklı model; R² kopan kanalın genliği bilinmeden (gerçekçi koşulda) ölçülmüştür.",
              ha="center", fontsize=8, color=INK_2)
     fig.tight_layout()
     _save(fig, "1_egitim_egrileri.png")
@@ -157,22 +158,27 @@ def fig_false_negatives(d):
 
 
 def fig_reconstruction(d):
+    """Kopan kanalların R²'si, gerçekçi koşulda: önceki model (v1) ve genlik farkındalıklı ana model."""
     drop = SCENARIOS[1:]
     labels = [s[1] for s in drop]
     r = [d["mae"][k] for k, _ in drop]
+    series = []
+    if os.path.exists(V1_RESULTS):
+        with open(V1_RESULTS) as f:
+            v1 = json.load(f)["mae"]
+        series.append(("Önceki model (v1, z-score çıkışlı)", C_BASE, [v1[k]["r2"] for k, _ in drop]))
+    series += [
+        ("Genlik farkındalıklı MAE", C_MAE, [x["r2"] for x in r]),
+        ("Genlik farkındalıklı MAE + Einthoven (Risk 1 B planı)", C_3, [x["ein_r2"] for x in r]),
+    ]
     fig, ax = plt.subplots(figsize=(11, 4))
-    _grouped_bars(ax, labels, [
-        ("Gerçekçi (kopan kanalın genliği bilinmeden)", C_MAE, [x["r2"] for x in r]),
-        ("Gerçekçi + Einthoven (Risk 1 B planı)", C_3, [x["ein_r2"] for x in r]),
-        ("Oracle (genlik biliniyormuş gibi; yalnızca karşılaştırma)", C_BASE, [x["oracle_r2"] for x in r]),
-    ], width=0.27, fmt="{:.3f}")
+    _grouped_bars(ax, labels, series, width=0.27)
     ax.axhline(0.80, color=TARGET, linestyle="--", linewidth=1, label="Hedef R² = 0.80")
     ax.axvline(3.5, color=GRID, linewidth=1)
-    ax.set_ylim(0, 1.12)
-    ax.set_ylabel("R² (kopan kanallar, mV)")
-    ax.set_title("Kopan kanalların rekonstrüksiyonu (test seti)")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), fontsize=8, ncol=2)
     ax.set_ylim(0, 1.08)
+    ax.set_ylabel("R² (kopan kanallar, mV)")
+    ax.set_title("Kopan kanalların rekonstrüksiyonu — gerçekçi koşul (kopan kanalın genliği bilinmeden)")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), fontsize=8, ncol=2)
     _save(fig, "4_rekonstruksiyon_r2.png")
 
 

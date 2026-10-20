@@ -1,53 +1,53 @@
-Tespit eşikleri (doğrulama, %99. yüzdelik): {'I': 0.465, 'II': 0.633, 'III': 0.278, 'aVR': 0.297, 'aVL': 0.436, 'aVF': 0.681, 'V1': 1.09, 'V2': 0.986, 'V3': 1.075, 'V4': 0.761, 'V5': 0.767, 'V6': 0.944}
-Temiz test: {'MAE': {'auroc': 0.9757190082644628, 'f1': 0.9279854147675478, 'sens': 0.9254545454545454, 'spec': 0.9309090909090909, 'fnr': 0.07454545454545458}, '1D-ResNet': {'auroc': 0.9652165289256199, 'f1': 0.8660624370594159, 'sens': 0.7818181818181819, 'spec': 0.9763636363636363, 'fnr': 0.21818181818181814}}   tespit yanlış alarm (kayıt başına) %11.6
-Taban kayması      SNR  12 dB  k=1 | F1  MAE 0.928  ResNet 0.865  MAE+tespit 0.929  oracle 0.927 | tespit duyarlılık %1 kesinlik %8  (298 sn)
-Taban kayması      SNR  12 dB  k=2 | F1  MAE 0.928  ResNet 0.866  MAE+tespit 0.929  oracle 0.919 | tespit duyarlılık %1 kesinlik %16  (432 sn)
-Taban kayması      SNR  12 dB  k=3 | F1  MAE 0.928  ResNet 0.866  MAE+tespit 0.929  oracle 0.908 | tespit duyarlılık %2 kesinlik %35  (564 sn)
-Taban kayması      SNR  12 dB  k=4 | F1  MAE 0.926  ResNet 0.864  MAE+tespit 0.927  oracle 0.903 | tespit duyarlılık %1 kesinlik %30  (673 sn)
-Taban kayması      SNR   6 dB  k=1 | F1  MAE 0.925  ResNet 0.866  MAE+tespit 0.926  oracle 0.924 | tespit duyarlılık %2 kesinlik %12  (782 sn)
-Taban kayması      SNR   6 dB  k=2 | F1  MAE 0.925  ResNet 0.866  MAE+tespit 0.926  oracle 0.909 | tespit duyarlılık %1 kesinlik %16  (890 sn)
-Taban kayması      SNR   6 dB  k=3 | F1  MAE 0.927  ResNet 0.866  MAE+tespit 0.928  oracle 0.915 | tespit duyarlılık %1 kesinlik %22  (998 sn)
-Taban kayması      SNR   6 dB  k=4 | F1  MAE 0.925  ResNet 0.867  MAE+tespit 0.925  oracle 0.898 | tespit duyarlılık %1 kesinlik %29  (1106 sn)
-Taban kayması      SNR   0 dB  k=1 | F1  MAE 0.929  ResNet 0.866  MAE+tespit 0.930  oracle 0.928 | tespit duyarlılık %2 kesinlik %11  (1213 sn)
-Taban kayması      SNR   0 dB  k=2 | F1  MAE 0.923  ResNet 0.868  MAE+tespit 0.925  oracle 0.922 | tespit duyarlılık %1 kesinlik %14  (1321 sn)
-Taban kayması      SNR   0 dB  k=3 | F1  MAE 0.925  ResNet 0.866  MAE+tespit 0.926  oracle 0.907 | tespit duyarlılık %1 kesinlik %27  (1428 sn)
-Taban kayması      SNR   0 dB  k=4 | F1  MAE 0.922  ResNet 0.865  MAE+tespit 0.923  oracle 0.900 | tespit duyarlılık %1 kesinlik %32  (1536 sn)
-Kas artefaktı      SNR  12 dB  k=1 | F1  MAE 0.928  ResNet 0.865  MAE+tespit 0.929  oracle 0.926 | tespit duyarlılık %2 kesinlik %12  (1644 sn)
-Kas artefaktı      SNR  12 dB  k=2 | F1  MAE 0.925  ResNet 0.867  MAE+tespit 0.928  oracle 0.912 | tespit duyarlılık %1 kesinlik %16  (1752 sn)
-Kas artefaktı      SNR  12 dB  k=3 | F1  MAE 0.926  ResNet 0.865  MAE+tespit 0.926  oracle 0.914 | tespit duyarlılık %1 kesinlik %26  (1859 sn)
-Kas artefaktı      SNR  12 dB  k=4 | F1  MAE 0.927  ResNet 0.867  MAE+tespit 0.926  oracle 0.908 | tespit duyarlılık %1 kesinlik %36  (1967 sn)
-Kas artefaktı      SNR   6 dB  k=1 | F1  MAE 0.925  ResNet 0.866  MAE+tespit 0.925  oracle 0.920 | tespit duyarlılık %2 kesinlik %11  (2075 sn)
-Kas artefaktı      SNR   6 dB  k=2 | F1  MAE 0.916  ResNet 0.867  MAE+tespit 0.917  oracle 0.910 | tespit duyarlılık %2 kesinlik %22  (2183 sn)
-Kas artefaktı      SNR   6 dB  k=3 | F1  MAE 0.921  ResNet 0.864  MAE+tespit 0.923  oracle 0.907 | tespit duyarlılık %2 kesinlik %28  (2290 sn)
-Kas artefaktı      SNR   6 dB  k=4 | F1  MAE 0.919  ResNet 0.863  MAE+tespit 0.919  oracle 0.909 | tespit duyarlılık %2 kesinlik %42  (2400 sn)
-Kas artefaktı      SNR   0 dB  k=1 | F1  MAE 0.921  ResNet 0.864  MAE+tespit 0.920  oracle 0.923 | tespit duyarlılık %12 kesinlik %40  (2511 sn)
-Kas artefaktı      SNR   0 dB  k=2 | F1  MAE 0.921  ResNet 0.869  MAE+tespit 0.922  oracle 0.915 | tespit duyarlılık %12 kesinlik %53  (2620 sn)
-Kas artefaktı      SNR   0 dB  k=3 | F1  MAE 0.916  ResNet 0.869  MAE+tespit 0.910  oracle 0.910 | tespit duyarlılık %13 kesinlik %64  (2728 sn)
-Kas artefaktı      SNR   0 dB  k=4 | F1  MAE 0.919  ResNet 0.866  MAE+tespit 0.917  oracle 0.903 | tespit duyarlılık %13 kesinlik %69  (2836 sn)
-Elektrot hareketi  SNR  12 dB  k=1 | F1  MAE 0.924  ResNet 0.866  MAE+tespit 0.924  oracle 0.925 | tespit duyarlılık %1 kesinlik %11  (2948 sn)
-Elektrot hareketi  SNR  12 dB  k=2 | F1  MAE 0.927  ResNet 0.868  MAE+tespit 0.929  oracle 0.913 | tespit duyarlılık %2 kesinlik %23  (3062 sn)
-Elektrot hareketi  SNR  12 dB  k=3 | F1  MAE 0.921  ResNet 0.866  MAE+tespit 0.923  oracle 0.910 | tespit duyarlılık %1 kesinlik %26  (3175 sn)
-Elektrot hareketi  SNR  12 dB  k=4 | F1  MAE 0.921  ResNet 0.868  MAE+tespit 0.923  oracle 0.903 | tespit duyarlılık %1 kesinlik %38  (3294 sn)
-Elektrot hareketi  SNR   6 dB  k=1 | F1  MAE 0.927  ResNet 0.867  MAE+tespit 0.928  oracle 0.920 | tespit duyarlılık %2 kesinlik %12  (3408 sn)
-Elektrot hareketi  SNR   6 dB  k=2 | F1  MAE 0.924  ResNet 0.863  MAE+tespit 0.925  oracle 0.914 | tespit duyarlılık %2 kesinlik %21  (3521 sn)
-Elektrot hareketi  SNR   6 dB  k=3 | F1  MAE 0.911  ResNet 0.870  MAE+tespit 0.910  oracle 0.916 | tespit duyarlılık %2 kesinlik %29  (3634 sn)
-Elektrot hareketi  SNR   6 dB  k=4 | F1  MAE 0.906  ResNet 0.873  MAE+tespit 0.906  oracle 0.900 | tespit duyarlılık %3 kesinlik %42  (3760 sn)
-Elektrot hareketi  SNR   0 dB  k=1 | F1  MAE 0.912  ResNet 0.869  MAE+tespit 0.914  oracle 0.924 | tespit duyarlılık %16 kesinlik %44  (3885 sn)
-Elektrot hareketi  SNR   0 dB  k=2 | F1  MAE 0.907  ResNet 0.869  MAE+tespit 0.906  oracle 0.922 | tespit duyarlılık %17 kesinlik %58  (4007 sn)
-Elektrot hareketi  SNR   0 dB  k=3 | F1  MAE 0.887  ResNet 0.866  MAE+tespit 0.886  oracle 0.907 | tespit duyarlılık %18 kesinlik %65  (4129 sn)
-Elektrot hareketi  SNR   0 dB  k=4 | F1  MAE 0.853  ResNet 0.874  MAE+tespit 0.860  oracle 0.911 | tespit duyarlılık %19 kesinlik %70  (4251 sn)
+Tespit eşikleri (doğrulama, %99. yüzdelik): {'I': 0.519, 'II': 0.429, 'III': 0.248, 'aVR': 0.375, 'aVL': 0.493, 'aVF': 0.687, 'V1': 2.44, 'V2': 2.879, 'V3': 1.105, 'V4': 1.119, 'V5': 0.995, 'V6': 0.964}
+Temiz test: {'MAE': {'auroc': 0.9791702479338843, 'f1': 0.924908424908425, 'sens': 0.9181818181818182, 'spec': 0.9327272727272727, 'fnr': 0.08181818181818179}, '1D-ResNet': {'auroc': 0.9652165289256199, 'f1': 0.8660624370594159, 'sens': 0.7818181818181819, 'spec': 0.9763636363636363, 'fnr': 0.21818181818181814}}   tespit yanlış alarm (kayıt başına) %10.0
+Taban kayması      SNR  12 dB  k=1 | F1  MAE 0.925  ResNet 0.865  MAE+tespit 0.925  oracle 0.930 | tespit duyarlılık %1 kesinlik %7  (256 sn)
+Taban kayması      SNR  12 dB  k=2 | F1  MAE 0.926  ResNet 0.866  MAE+tespit 0.926  oracle 0.919 | tespit duyarlılık %1 kesinlik %18  (365 sn)
+Taban kayması      SNR  12 dB  k=3 | F1  MAE 0.926  ResNet 0.866  MAE+tespit 0.926  oracle 0.919 | tespit duyarlılık %1 kesinlik %28  (473 sn)
+Taban kayması      SNR  12 dB  k=4 | F1  MAE 0.926  ResNet 0.864  MAE+tespit 0.926  oracle 0.907 | tespit duyarlılık %1 kesinlik %33  (581 sn)
+Taban kayması      SNR   6 dB  k=1 | F1  MAE 0.924  ResNet 0.866  MAE+tespit 0.924  oracle 0.925 | tespit duyarlılık %1 kesinlik %7  (689 sn)
+Taban kayması      SNR   6 dB  k=2 | F1  MAE 0.926  ResNet 0.866  MAE+tespit 0.926  oracle 0.916 | tespit duyarlılık %1 kesinlik %16  (796 sn)
+Taban kayması      SNR   6 dB  k=3 | F1  MAE 0.927  ResNet 0.866  MAE+tespit 0.926  oracle 0.920 | tespit duyarlılık %1 kesinlik %22  (905 sn)
+Taban kayması      SNR   6 dB  k=4 | F1  MAE 0.926  ResNet 0.867  MAE+tespit 0.926  oracle 0.910 | tespit duyarlılık %1 kesinlik %30  (1012 sn)
+Taban kayması      SNR   0 dB  k=1 | F1  MAE 0.925  ResNet 0.866  MAE+tespit 0.925  oracle 0.924 | tespit duyarlılık %1 kesinlik %12  (1120 sn)
+Taban kayması      SNR   0 dB  k=2 | F1  MAE 0.924  ResNet 0.868  MAE+tespit 0.924  oracle 0.928 | tespit duyarlılık %1 kesinlik %15  (1227 sn)
+Taban kayması      SNR   0 dB  k=3 | F1  MAE 0.926  ResNet 0.866  MAE+tespit 0.926  oracle 0.915 | tespit duyarlılık %1 kesinlik %29  (1335 sn)
+Taban kayması      SNR   0 dB  k=4 | F1  MAE 0.926  ResNet 0.865  MAE+tespit 0.926  oracle 0.906 | tespit duyarlılık %1 kesinlik %43  (1442 sn)
+Kas artefaktı      SNR  12 dB  k=1 | F1  MAE 0.924  ResNet 0.865  MAE+tespit 0.924  oracle 0.925 | tespit duyarlılık %1 kesinlik %11  (1551 sn)
+Kas artefaktı      SNR  12 dB  k=2 | F1  MAE 0.924  ResNet 0.867  MAE+tespit 0.924  oracle 0.913 | tespit duyarlılık %1 kesinlik %17  (1659 sn)
+Kas artefaktı      SNR  12 dB  k=3 | F1  MAE 0.925  ResNet 0.865  MAE+tespit 0.925  oracle 0.920 | tespit duyarlılık %1 kesinlik %28  (1766 sn)
+Kas artefaktı      SNR  12 dB  k=4 | F1  MAE 0.926  ResNet 0.867  MAE+tespit 0.926  oracle 0.914 | tespit duyarlılık %1 kesinlik %36  (1877 sn)
+Kas artefaktı      SNR   6 dB  k=1 | F1  MAE 0.927  ResNet 0.866  MAE+tespit 0.927  oracle 0.925 | tespit duyarlılık %2 kesinlik %13  (1984 sn)
+Kas artefaktı      SNR   6 dB  k=2 | F1  MAE 0.925  ResNet 0.867  MAE+tespit 0.925  oracle 0.916 | tespit duyarlılık %2 kesinlik %27  (2092 sn)
+Kas artefaktı      SNR   6 dB  k=3 | F1  MAE 0.925  ResNet 0.864  MAE+tespit 0.924  oracle 0.914 | tespit duyarlılık %1 kesinlik %29  (2200 sn)
+Kas artefaktı      SNR   6 dB  k=4 | F1  MAE 0.928  ResNet 0.863  MAE+tespit 0.926  oracle 0.918 | tespit duyarlılık %2 kesinlik %41  (2308 sn)
+Kas artefaktı      SNR   0 dB  k=1 | F1  MAE 0.924  ResNet 0.864  MAE+tespit 0.924  oracle 0.925 | tespit duyarlılık %9 kesinlik %39  (2416 sn)
+Kas artefaktı      SNR   0 dB  k=2 | F1  MAE 0.925  ResNet 0.869  MAE+tespit 0.923  oracle 0.923 | tespit duyarlılık %10 kesinlik %55  (2524 sn)
+Kas artefaktı      SNR   0 dB  k=3 | F1  MAE 0.925  ResNet 0.869  MAE+tespit 0.925  oracle 0.919 | tespit duyarlılık %10 kesinlik %64  (2632 sn)
+Kas artefaktı      SNR   0 dB  k=4 | F1  MAE 0.916  ResNet 0.866  MAE+tespit 0.913  oracle 0.910 | tespit duyarlılık %10 kesinlik %69  (2739 sn)
+Elektrot hareketi  SNR  12 dB  k=1 | F1  MAE 0.925  ResNet 0.866  MAE+tespit 0.925  oracle 0.925 | tespit duyarlılık %1 kesinlik %9  (2848 sn)
+Elektrot hareketi  SNR  12 dB  k=2 | F1  MAE 0.927  ResNet 0.868  MAE+tespit 0.927  oracle 0.916 | tespit duyarlılık %1 kesinlik %20  (2957 sn)
+Elektrot hareketi  SNR  12 dB  k=3 | F1  MAE 0.927  ResNet 0.866  MAE+tespit 0.927  oracle 0.918 | tespit duyarlılık %1 kesinlik %24  (3065 sn)
+Elektrot hareketi  SNR  12 dB  k=4 | F1  MAE 0.924  ResNet 0.868  MAE+tespit 0.923  oracle 0.910 | tespit duyarlılık %1 kesinlik %37  (3172 sn)
+Elektrot hareketi  SNR   6 dB  k=1 | F1  MAE 0.925  ResNet 0.867  MAE+tespit 0.925  oracle 0.917 | tespit duyarlılık %2 kesinlik %14  (3280 sn)
+Elektrot hareketi  SNR   6 dB  k=2 | F1  MAE 0.921  ResNet 0.863  MAE+tespit 0.920  oracle 0.918 | tespit duyarlılık %2 kesinlik %25  (3388 sn)
+Elektrot hareketi  SNR   6 dB  k=3 | F1  MAE 0.922  ResNet 0.870  MAE+tespit 0.923  oracle 0.921 | tespit duyarlılık %2 kesinlik %34  (3499 sn)
+Elektrot hareketi  SNR   6 dB  k=4 | F1  MAE 0.916  ResNet 0.873  MAE+tespit 0.918  oracle 0.912 | tespit duyarlılık %3 kesinlik %46  (3609 sn)
+Elektrot hareketi  SNR   0 dB  k=1 | F1  MAE 0.921  ResNet 0.869  MAE+tespit 0.921  oracle 0.925 | tespit duyarlılık %13 kesinlik %43  (3718 sn)
+Elektrot hareketi  SNR   0 dB  k=2 | F1  MAE 0.917  ResNet 0.869  MAE+tespit 0.920  oracle 0.917 | tespit duyarlılık %13 kesinlik %54  (3826 sn)
+Elektrot hareketi  SNR   0 dB  k=3 | F1  MAE 0.904  ResNet 0.866  MAE+tespit 0.903  oracle 0.915 | tespit duyarlılık %15 kesinlik %63  (3934 sn)
+Elektrot hareketi  SNR   0 dB  k=4 | F1  MAE 0.892  ResNet 0.874  MAE+tespit 0.889  oracle 0.912 | tespit duyarlılık %15 kesinlik %65  (4042 sn)
 
 === Özet: F1 (k = 1–4 parazitli kanal ortalaması) ===
 gürültü               SNR |         MAE   1D-ResNet  MAE+tespit  MAE+oracle
-temiz                   - |       0.928       0.866           -           -
-Taban kayması        12dB |       0.928       0.865       0.928       0.914
-Taban kayması         6dB |       0.926       0.866       0.926       0.912
-Taban kayması         0dB |       0.925       0.866       0.926       0.914
-Kas artefaktı        12dB |       0.927       0.866       0.927       0.915
-Kas artefaktı         6dB |       0.920       0.865       0.921       0.912
-Kas artefaktı         0dB |       0.919       0.867       0.917       0.913
-Elektrot hareketi    12dB |       0.923       0.867       0.925       0.913
-Elektrot hareketi     6dB |       0.917       0.868       0.917       0.913
-Elektrot hareketi     0dB |       0.890       0.870       0.891       0.916
+temiz                   - |       0.925       0.866           -           -
+Taban kayması        12dB |       0.926       0.865       0.925       0.919
+Taban kayması         6dB |       0.926       0.866       0.925       0.918
+Taban kayması         0dB |       0.925       0.866       0.925       0.918
+Kas artefaktı        12dB |       0.925       0.866       0.925       0.918
+Kas artefaktı         6dB |       0.926       0.865       0.926       0.918
+Kas artefaktı         0dB |       0.922       0.867       0.921       0.919
+Elektrot hareketi    12dB |       0.926       0.867       0.926       0.917
+Elektrot hareketi     6dB |       0.921       0.868       0.921       0.917
+Elektrot hareketi     0dB |       0.909       0.870       0.908       0.917
 
-Sonuçlar: results/noise/noise_results.json, noise_f1.png, noise_example.png  (4252 sn)
+Sonuçlar: results/noise/noise_results.json, noise_f1.png, noise_example.png  (4043 sn)

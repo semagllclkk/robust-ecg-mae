@@ -26,7 +26,7 @@ from src.dataset import PTBXLProcessedDataset
 from src.ecg_constants import WALL_NAMES
 from src.lead_dropout import full_keep_mask, random_keep_mask
 from src.metrics import best_f1_threshold
-from src.train import load_checkpoint
+from src.train import get_device, load_checkpoint, model_forward
 
 
 def checkpoint_sha256(path):
@@ -69,8 +69,10 @@ def collect(model, dataset, device, seed=0, batch_size=64):
         if not mi.any():
             continue
         x, walls = x[mi], target["walls"][mi]
+        tgt = {k: v[mi].to(device) for k, v in target.items()}
         for M in (full_keep_mask(len(x)), random_keep_mask(len(x), generator=generator)):
-            out = model(x.to(device) * M.to(device).unsqueeze(-1), M.to(device))
+            M = M.to(device)
+            out = model_forward(model, x.to(device) * M.unsqueeze(-1), M, tgt)  # genlik farkındalıklı model σ ister
             probs.append(torch.sigmoid(out["wall_logits"]).float().cpu().numpy())
             labels.append(walls.numpy())
     return np.concatenate(labels), np.concatenate(probs)
@@ -83,11 +85,11 @@ def main():
     parser.add_argument("--output", default="models/wall_thresholds.json")
     args = parser.parse_args()
 
-    device = torch.device("cpu")
+    device = get_device()
     model, ckpt = load_checkpoint(args.checkpoint, device)
     model.eval()
     labels, probs = collect(model, PTBXLProcessedDataset("val", args.processed_dir), device)
-    thresholds = wall_thresholds(labels, probs)
+    thresholds = {w: round(t, 2) for w, t in wall_thresholds(labels, probs).items()}
 
     report = {}
     for i, w in enumerate(WALL_NAMES):
