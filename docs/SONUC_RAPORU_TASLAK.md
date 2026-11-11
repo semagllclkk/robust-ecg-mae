@@ -67,7 +67,7 @@ Eğitim, Araştırma Olanakları tablosunda yer alan Apple M3 geliştirme bilgis
 
 ### 3.6 Arayüz ve açıklanabilirlik (İP2, İP4, İP5)
 
-- **İP2 (Sema Gül Çelik):** React tabanlı gösterge paneli; 12 derivasyonun tek tek açılıp kapatılabildiği EKG kâğıdı görünümü ve Mock-API. Arayüzün kendi kare sayacıyla (EKG çizim döngüsü) dört koşulda 10'ar saniye ölçüm yapılmıştır: 12 derivasyon akış, 4 derivasyon kopması (V1–V4) ve rekonstrüksiyon çizimi, 3D kalp modelinin döndürülmesi, art arda yeni kayıt yüklenmesi. Tüm koşullarda en düşük değer 60 FPS'tir (Apple M3, Chrome 157, 60 Hz ekran; gerçek FastAPI arka ucu ve model ile).
+- **İP2 (Sema Gül Çelik):** React tabanlı gösterge paneli; 12 derivasyonun tek tek açılıp kapatılabildiği EKG kâğıdı görünümü ve Mock-API. Arayüzün kendi kare sayacıyla (EKG çizim döngüsü) dört koşulda 10'ar saniye ölçüm yapılmıştır: 12 derivasyon akış, 4 derivasyon kopması (V1–V4) ve rekonstrüksiyon çizimi, 3D kalp modelinin döndürülmesi, art arda yeni kayıt yüklenmesi. Ölçüm hem başarı ölçütündeki gibi yalnız Mock-API (sahte veri, modelden bağımsız) ile hem de gerçek FastAPI arka ucu ve modelle tekrarlanmıştır. Her iki durumda da tüm koşullarda en düşük değer 60 FPS'tir (Apple M3, Chrome 157, 60 Hz ekran).
 - **İP4 (Sema Gül Çelik):** Guo ve ark. [10] derivasyon gruplamasına uygun olarak 3D kalp modeli (HuBMAP Human Reference Atlas [15]) üzerinde etkilenen duvarın kırmızı gradyanla işaretlenmesi; duvara tıklandığında açılan Click-to-Explain kartı: ST sapması (mm), şüpheli koroner arter (Anterior → LAD, Inferior → RCA, Lateral → LCx), eksik derivasyonlara rağmen karar güveni.
 - **İP5 (ortak):** FastAPI arka ucu, eğitilmiş modeli Mock-API ile aynı sözleşmeyle sunar. Çıktılar: MI olasılığı, etkilenen duvarlar (doğrulama kümesinde kalibre edilmiş duvar eşikleri), Spatial Attention ağırlıkları, derivasyon önem skorları, kopan derivasyonların rekonstrüksiyonu ve kaynakları, dinamik klinisyen/hasta metinleri ve PDF klinik rapor.
 
@@ -131,7 +131,7 @@ Apple M3 (MPS) üzerinde tek kayıt için 13–22 ms ölçülmüştür (hedef < 
 | İP | Takvim | Faaliyet | Sorumlu | Başarı ölçütü (katkı) | Gerçekleşme |
 |---|---|---|---|---|---|
 | İP1 | 1. ay | PTB-XL temini, etiket matrisleri, 0.5–45 Hz Butterworth, z-score hattı | Zilan Aykal | Temizlenmiş tensör veri deposunun ve `preprocessing.py` modülünün sorunsuz çalışması (%15) | Sağlandı |
-| İP2 | 2. ay | Dashboard iskeleti, 12 kanal aç/kapa, Mock-API | Sema Gül Çelik | Modelden bağımsız çalışan, sahte verilerle akıcı 60 FPS sinyal çizen arayüz prototipi (%15) | Sağlandı: Mock-API ile modelden bağımsız çalışıyor; gerçek arka uçla ölçülen en düşük değer 60 FPS |
+| İP2 | 2. ay | Dashboard iskeleti, 12 kanal aç/kapa, Mock-API | Sema Gül Çelik | Modelden bağımsız çalışan, sahte verilerle akıcı 60 FPS sinyal çizen arayüz prototipi (%15) | Sağlandı: Mock-API ile modelden bağımsız çalışıyor; Mock-API ve gerçek arka uçla ölçülen en düşük değer 60 FPS |
 | İP3 | 3. ay | LeadDropout, 1D-CNN + Spatial Attention tabanlı çift başlıklı MAE eğitimi | Zilan Aykal | Sinyal rekonstrüksiyonunda düşük hata (RMSE < 0.15) ve eğitilmiş .pth ağırlıkları (%25) | Sağlandı, bir istisnayla: rastgele 1–4 kopmada RMSE 0.067–0.079 mV; kritik Anterior kopmasında 0.166 mV |
 | İP4 | 4. ay | 3D kalp anatomisi, dikkat ağırlıklarının renklendirilmesi, Click-to-Explain | Sema Gül Çelik | 3D kalp duvarı üzerinde tıklanabilir ve dinamik açıklama üreten etkileşimli XAI modülü (%20) | Sağlandı |
 | İP5 | 5.–6. ay | Modelin FastAPI ile arayüze bağlanması, 1–4 kanal stres testlerinin canlı doğrulanması | Zilan Aykal, Sema Gül Çelik | Eksik kanal koşullarında %88 üzeri F1 sağlayan, entegre çalışan canlı karar destek sistemi (%15) | Sağlandı: tüm kopma senaryolarında F1 0.885–0.923 |
@@ -166,7 +166,7 @@ Proje kapsamında, eksik ve gürültülü derivasyon koşullarında MI tespitini
 
 ## 10. Yaygın Etki
 
-- **Bilimsel/akademik:** Rekonstrüksiyon metrikleri (R², RMSE) ve eksik kanal stres testi sonuçları IEEE TIPTEKNO veya Ulusal Biyomedikal Mühendisliği Kongresi'nde bildiri olarak sunulacaktır. [Başvuru tarihi ve durum eklenecek.]
+- **Bilimsel/akademik:** Rekonstrüksiyon metrikleri (R², RMSE) ve eksik kanal stres testi sonuçları IEEE TIPTEKNO veya Ulusal Biyomedikal Mühendisliği Kongresi'nde bildiri olarak sunulmak üzere başvuru yapılmıştır. [Kongre adı ve başvuru tarihi eklenecek.]
 - **Prototip:** Derivasyon kopması senaryolarını simüle eden, eksik EKG sinyalini sağlam derivasyonlardan tamamlayan ve 3D kalp modeli üzerinde karar gerekçesi sunan (Click-to-Explain) karar destek yazılım prototipi geliştirilmiştir.
 - **Yeni proje:** Öneride öngörülen ikinci dönem çalışmaları için altyapı hazırdır: gerçek gürültü kayıtlarıyla stres testi hattı (`src/noise_test.py`) kurulmuş, arayüzün FPS ve çıkarım gecikmesi ölçülmüştür; modüler veri hattı ve model, EEG gibi farklı fizyolojik zaman serilerine uyarlanabilecek yapıdadır.
 - Kaynak kodu ve eğitilmiş model: [GitHub deposu bağlantısı, erişim durumu]
