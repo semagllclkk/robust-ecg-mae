@@ -207,3 +207,39 @@ def test_amplitude_aware_requires_sigma():
     m = ECGMaskedAutoencoder(amplitude_aware=True, pop_sigma=[0.1] * 12)
     with pytest.raises(ValueError):
         m(torch.randn(1, 12, 1000), torch.ones(1, 12))
+
+
+# --- Risk 1 B planı: uzamsal komşuluk regülarizasyonu ----------------------------------------------
+
+def test_neighborhood_prior_structure():
+    from src.spatial_prior import neighborhood_matrix
+    W = neighborhood_matrix()
+    assert W.shape == (12, 12) and (W >= 0).all() and np.allclose(W, W.T)
+    assert W[1, 5] > W[1, 3]      # II (60°) aVF'ye (90°) aVR'den (−150°) daha yakın
+    assert W[6, 7] > W[6, 11]     # V1 komşusu V2, V6 değil
+
+
+def test_neighborhood_kl_zero_at_prior_and_ignores_dropped_keys():
+    from src.spatial_prior import neighborhood_kl, neighborhood_matrix
+    M = torch.ones(2, 12)
+    M[:, 6:10] = 0                                       # Anterior kopuk
+    p = torch.from_numpy(neighborhood_matrix()).unsqueeze(0) * M.unsqueeze(1)
+    p = p / p.sum(-1, keepdim=True)
+    assert neighborhood_kl(p, M).item() == pytest.approx(0.0, abs=1e-5)
+    uniform = M.unsqueeze(1).expand(2, 12, 12) / M.sum(-1).view(2, 1, 1)
+    assert neighborhood_kl(uniform, M).item() > 0
+
+
+def test_spatial_prior_weight_zero_leaves_loss_unchanged():
+    from src.losses import MultiTaskLoss
+    torch.manual_seed(0)
+    model = ECGMaskedAutoencoder(depth=1).eval()
+    x = torch.randn(2, 12, 1000)
+    M = random_keep_mask(2, n_drop=3)
+    target = {"mi": torch.tensor([1.0, 0.0]), "walls": torch.tensor([[1.0, 0, 0], [0, 0, 0]])}
+    with torch.no_grad():
+        out = model(x * M.unsqueeze(-1), M)
+    base, parts0 = MultiTaskLoss()(out, x, target)
+    reg, parts = MultiTaskLoss(spatial_prior=0.1)(out, x, target)
+    assert parts0["prior"] == 0.0 and parts["prior"] > 0
+    assert reg.item() == pytest.approx(base.item() + 0.1 * parts["prior"], rel=1e-5)
