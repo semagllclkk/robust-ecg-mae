@@ -115,6 +115,25 @@ Raporun İP6 kapsamında ("modelin optimizasyonu") denenebilecekler:
 - Sınıflandırma ve rekonstrüksiyon için ayrı checkpoint seçimi, ya da Focal başlığına daha güçlü düzenlileştirme (dropout, ağırlık sönümü).
 - Rapordaki α/β (0.4/0.6) sabit tutularak yalnızca eğitim süresi ve öğrenme oranı ayarı.
 
+## Risk 1 B planı: uzamsal komşuluk regülarizasyonu (11.11.2026)
+
+Raporun Risk 1 B planı, 3–4 kanal kopmasında Spatial Attention katmanına "önceden tanımlı uzamsal komşuluk ağırlık matrisleri"nin regülarizasyon olarak eklenmesini öngörür. Kritik Anterior rekonstrüksiyonu için bu denendi (`src/spatial_prior.py`, `python -m src.train --amplitude-aware --spatial-prior 0.1`).
+
+- **Matris:** Elektrot yerleşiminden kuruldu. Ekstremite derivasyonlarında heksaksiyel açı yakınlığı max(0, cos Δθ), göğüs derivasyonlarında V1→V6 sırasına göre exp(−|i−j|), iki düzlem arasında küçük sabit değer.
+- **Kayıp:** 0.4·MSE + 0.6·Focal + 0.1·KL(komşuluk önseli ‖ son Spatial Attention katmanı). Önsel, her sorgu için yalnız sağlam derivasyonlar üzerinde normalize edilir. Ana model bu terimi kullanmaz (ağırlık 0).
+- **Eğitim:** 15 epoch planlandı. Eğitim 11. epoch'ta kesildi (oturum kapandı). En iyi doğrulama AUROC'u 11. epoch'ta 0.9763 (ana model 0.9778). Model: `models/mae_ecg_checkpoint_bplan.pth`, sonuçlar: `results/bplan/`.
+
+| Test (gerçekçi rekonstrüksiyon) | Ana model | Komşuluk regülarizasyonlu |
+|---|---|---|
+| Kritik Anterior R² / RMSE | 0.544 / 0.166 mV | 0.544 / 0.163 mV |
+| Kritik Inferior R² | 0.886 | 0.883 |
+| Kritik Lateral R² | 0.863 | 0.855 |
+| Rastgele 1–4 kopma R² | 0.829–0.871 | 0.828–0.869 |
+| F1, tüm kopma senaryoları | 0.885–0.923 | 0.886–0.933 |
+| Yanlış negatif azalması (havuzlanmış) | %49.2 | %43.9 |
+
+**Sonuç:** Komşuluk regülarizasyonu kritik Anterior rekonstrüksiyonunu iyileştirmedi. Dikkat ağırlıkları önsele yaklaştı (KL 0.85 → 0.03), ama V1–V4'ün dördü birlikte koptuğunda eksik bilgi kalan derivasyonlarda bulunmuyor; dikkatin hangi kanallara yöneldiği bu sınırı değiştirmiyor. Ana model, doğrulama AUROC'u daha yüksek olduğu için değişmedi. Eğitimin tamamlanmamış olması bu sonucu etkileyecek görünmüyor: kritik Anterior R²'si iki modelde de aynı ve doğrulama eğrileri 11. epoch'ta doygunluğa ulaşmıştı.
+
 ## Gürültülü derivasyon stres testi
 
 Raporun amacı (Md. 1.2), 1–4 derivasyonun "tamamen koptuğu **veya parazitlendiği**" koşullarda tanı başarımını korumaktır. Kopma testlerine ek olarak gürültü testi yapıldı (`python -m src.noise_test`).
