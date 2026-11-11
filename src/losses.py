@@ -1,6 +1,7 @@
 """
 Birleşik kayıp fonksiyonu (TÜBİTAK Raporu Md. 2.4):
     L_toplam = α · L_MSE + β · L_Focal        (α = 0.4, β = 0.6)
+    İsteğe bağlı (Risk 1 B planı): + λ · KL(uzamsal komşuluk önseli ‖ Spatial Attention), src/spatial_prior.py
 
 - L_MSE   : yalnızca kasti olarak koparılan (maskelenen) derivasyonlarda ortalama karesel hata
 - L_Focal : MI / Normal Focal Loss + kriz tipi (Anterior/Inferior/Lateral) Focal Loss;
@@ -9,6 +10,8 @@ Birleşik kayıp fonksiyonu (TÜBİTAK Raporu Md. 2.4):
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from src.spatial_prior import neighborhood_kl
 
 
 def masked_mse(recon, target, dropped):
@@ -38,9 +41,10 @@ def binary_focal_loss(logits, targets, gamma=2.0, alpha=None, reduction="mean"):
 
 
 class MultiTaskLoss(nn.Module):
-    def __init__(self, alpha_mse=0.4, beta_focal=0.6, gamma=2.0, focal_alpha=None):
+    def __init__(self, alpha_mse=0.4, beta_focal=0.6, gamma=2.0, focal_alpha=None, spatial_prior=0.0):
         super().__init__()
         self.alpha_mse = alpha_mse
+        self.spatial_prior = spatial_prior  # Risk 1 B planı: uzamsal komşuluk regülarizasyonu ağırlığı (0 = kapalı)
         self.beta_focal = beta_focal
         self.gamma = gamma
         self.focal_alpha = focal_alpha
@@ -62,4 +66,9 @@ class MultiTaskLoss(nn.Module):
             rec = torch.zeros((), device=signal.device)
 
         total = self.alpha_mse * rec + self.beta_focal * focal
-        return total, {"rec": rec.item(), "cls": cls.item(), "wall": wall.item()}
+        parts = {"rec": rec.item(), "cls": cls.item(), "wall": wall.item(), "prior": 0.0}
+        if self.spatial_prior > 0 and out.get("spatial_attention") is not None:
+            prior = neighborhood_kl(out["spatial_attention"], out["M"])
+            total = total + self.spatial_prior * prior
+            parts["prior"] = prior.item()
+        return total, parts

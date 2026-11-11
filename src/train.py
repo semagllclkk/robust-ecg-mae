@@ -87,7 +87,7 @@ def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, a
     """
     model.eval()
     gen = torch.Generator().manual_seed(seed)
-    totals = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0}
+    totals = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0, "prior": 0.0}
     cls_meter = ClassificationMeter()
     rec_meter, ein_meter, oracle_meter = ReconstructionMeter(), ReconstructionMeter(), ReconstructionMeter()
     pop_sigma = torch.as_tensor(pop_sigma if pop_sigma is not None else population_sigma(), device=device)
@@ -105,7 +105,7 @@ def evaluate(model, loader, criterion, device, mask_fn, seed=0, threshold=0.5, a
         out = _float_outputs(out)
         loss, parts = criterion(out, recon_target(model, x, target), target)
         totals["loss"] += loss.item()
-        for k in ("rec", "cls", "wall"):
+        for k in ("rec", "cls", "wall", "prior"):
             totals[k] += parts[k]
         cls_meter.update(out, target)
         if out["recon"] is not None:
@@ -159,6 +159,8 @@ def main():
     parser.add_argument("--no-amp", action="store_true", help="bfloat16 karışık hassasiyeti kapat")
     parser.add_argument("--limit-batches", type=int, default=None, help="Epoch başına batch sınırı (deneme için)")
     parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--spatial-prior", type=float, default=0.0,
+                        help="Risk 1 B planı: uzamsal komşuluk regülarizasyonu ağırlığı λ (0 = kapalı)")
     parser.add_argument("--amplitude-aware", action="store_true",
                         help="Sağlam kanalların genliğini modele ver, rekonstrüksiyonu fiziksel ölçekte üret")
     parser.add_argument("--seed", type=int, default=42)
@@ -202,9 +204,10 @@ def main():
         config = dict(in_channels=12)
         alpha_mse = 0.0  # 1D-ResNet rekonstrüksiyon yapmaz
     model = build_model(args.arch, config).to(device)
-    criterion = MultiTaskLoss(alpha_mse, args.beta_focal, args.gamma, focal_alpha)
+    criterion = MultiTaskLoss(alpha_mse, args.beta_focal, args.gamma, focal_alpha, spatial_prior=args.spatial_prior)
     print(f"Kayıp: {alpha_mse}·MSE(maskeli) + {args.beta_focal}·Focal(γ={args.gamma}, "
-          f"α={focal_alpha if focal_alpha is None else round(focal_alpha, 3)})")
+          f"α={focal_alpha if focal_alpha is None else round(focal_alpha, 3)})"
+          + (f" + {args.spatial_prior}·KL(komşuluk önseli ‖ Spatial Attention)" if args.spatial_prior > 0 else ""))
     print(f"Parametre sayısı: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -227,7 +230,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         t0 = time.time()
-        sums = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0}
+        sums = {"loss": 0.0, "rec": 0.0, "cls": 0.0, "wall": 0.0, "prior": 0.0}
         n_batches = 0
         for i, batch in enumerate(train_loader):
             if args.limit_batches is not None and i >= args.limit_batches:
@@ -251,7 +254,7 @@ def main():
             scheduler.step()
 
             sums["loss"] += loss.item()
-            for k in ("rec", "cls", "wall"):
+            for k in ("rec", "cls", "wall", "prior"):
                 sums[k] += parts[k]
             n_batches += 1
             if (i + 1) % 50 == 0:
@@ -261,8 +264,10 @@ def main():
 
         val = evaluate(model, val_loader, criterion, device, mixed_dropout_mask, seed=0, amp=amp,
                        max_batches=args.limit_batches)
+        prior_log = f", önsel {train_stats['prior']:.4f}" if args.spatial_prior > 0 else ""
         print(f"Epoch {epoch:02d}/{args.epochs}  train loss {train_stats['loss']:.4f} "
-              f"(rec {train_stats['rec']:.4f}, cls {train_stats['cls']:.4f}, duvar {train_stats['wall']:.4f})  |  "
+              f"(rec {train_stats['rec']:.4f}, cls {train_stats['cls']:.4f}, duvar {train_stats['wall']:.4f}"
+              f"{prior_log})  |  "
               f"val AUROC {val['auroc']:.4f} F1 {val['f1']:.4f} duvar-AUROC {val['wall_auroc_macro']:.4f}  "
               f"RMSE {val['rmse_mv']:.4f} mV R² {val['r2']:.4f} r {val['pearson_r']:.4f}  ({time.time() - t0:.0f} sn)",
               flush=True)
@@ -281,7 +286,7 @@ def main():
             torch.save({"arch": args.arch, "model_state": model.state_dict(), "config": config, "epoch": epoch,
                         "val_metrics": {k: v for k, v in val.items() if not k.startswith("_")},
                         "threshold": threshold, "focal_alpha": focal_alpha, "focal_gamma": args.gamma,
-                        "alpha_mse": alpha_mse, "beta_focal": args.beta_focal,
+                        "alpha_mse": alpha_mse, "beta_focal": args.beta_focal, "spatial_prior": args.spatial_prior,
                         "lead_dropout": {"min_drop": args.min_drop, "max_drop": args.max_drop,
                                          "critical_prob": args.critical_prob}}, checkpoint_path)
             print(f"  ✓ En iyi model kaydedildi (val AUROC {best_auroc:.4f}, F1-eşiği {threshold:.2f}) -> {checkpoint_path}")
