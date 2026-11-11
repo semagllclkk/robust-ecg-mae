@@ -67,7 +67,7 @@ L_toplam = 0.4 · L_MSE + 0.6 · L_Focal. L_MSE yalnızca kopan derivasyonlarda 
 
 ### 3.6 Arayüz ve açıklanabilirlik (İP2, İP4, İP5)
 
-- **İP2 (Sema Gül Çelik):** React tabanlı gösterge paneli; 12 derivasyonun tek tek açılıp kapatılabildiği EKG kâğıdı görünümü ve Mock-API. [60 FPS ölçüm sonucu eklenecek.]
+- **İP2 (Sema Gül Çelik):** React tabanlı gösterge paneli; 12 derivasyonun tek tek açılıp kapatılabildiği EKG kâğıdı görünümü ve Mock-API. Arayüzün kendi kare sayacıyla (EKG çizim döngüsü) dört koşulda 10'ar saniye ölçüm yapılmıştır: 12 derivasyon akış, 4 derivasyon kopması (V1–V4) ve rekonstrüksiyon çizimi, 3D kalp modelinin döndürülmesi, art arda yeni kayıt yüklenmesi. Tüm koşullarda en düşük değer 60 FPS'tir (Apple M3, Chrome 157, 60 Hz ekran; gerçek FastAPI arka ucu ve model ile).
 - **İP4 (Sema Gül Çelik):** 3D kalp modeli (HuBMAP Human Reference Atlas) üzerinde etkilenen duvarın kırmızı gradyanla işaretlenmesi; duvara tıklandığında açılan Click-to-Explain kartı: ST sapması (mm), şüpheli koroner arter (Anterior → LAD, Inferior → RCA, Lateral → LCx), eksik derivasyonlara rağmen karar güveni.
 - **İP5 (ortak):** FastAPI arka ucu, eğitilmiş modeli Mock-API ile aynı sözleşmeyle sunar. Çıktılar: MI olasılığı, etkilenen duvarlar (doğrulama kümesinde kalibre edilmiş duvar eşikleri), Spatial Attention ağırlıkları, derivasyon önem skorları, kopan derivasyonların rekonstrüksiyonu ve kaynakları, dinamik klinisyen/hasta metinleri ve PDF klinik rapor.
 
@@ -131,7 +131,7 @@ Apple M3 (MPS) üzerinde tek kayıt için 13–22 ms ölçülmüştür (hedef < 
 | İP | Planlanan | Sorumlu | Başarı ölçütü | Durum |
 |---|---|---|---|---|
 | İP1 | Veri hazırlama ve ön işleme | Zilan Aykal | Temizlenmiş tensör deposu, `preprocessing.py` | Tamamlandı |
-| İP2 | Gösterge paneli, 12 kanal aç/kapa, Mock-API | Sema Gül Çelik | 60 FPS | Tamamlandı [FPS ölçümü eklenecek] |
+| İP2 | Gösterge paneli, 12 kanal aç/kapa, Mock-API | Sema Gül Çelik | 60 FPS | Tamamlandı (ölçülen en düşük 60 FPS) |
 | İP3 | LeadDropout + çift başlıklı MAE eğitimi | Zilan Aykal | RMSE < 0.15, eğitilmiş .pth | Tamamlandı |
 | İP4 | 3D kalp ve Click-to-Explain | Sema Gül Çelik | [başvurudaki ölçüt] | Tamamlandı |
 | İP5 | FastAPI entegrasyonu, 1–4 kanal stres testleri | Ortak | F1 > %88 | Tamamlandı |
