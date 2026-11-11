@@ -5,7 +5,7 @@
 **Kurum:** Pamukkale Üniversitesi, Bilgisayar Mühendisliği Bölümü
 **Proje yürütücüsü:** Zilan Aykal · **Araştırmacı:** Sema Gül Çelik · **Danışman:** Doç. Dr. Meriç Çetin
 
-> Taslak notu: `[...]` ile işaretli yerler ölçüm veya bilgi bekliyor. Sayıların tamamı `docs/SONUCLAR.md` ve `results/` altındaki dosyalardan alınmıştır. Kaynak numaraları başvuru raporundaki kaynakçayla aynıdır.
+> Taslak notu: `[...]` ile işaretli yerler bilgi bekliyor. Sayıların tamamı `docs/SONUCLAR.md` ve `results/` altındaki dosyalardan alınmıştır. Kaynak numaraları Araştırma Önerisi Formu'ndaki kaynakçayla aynıdır; [13]–[15] bu raporda eklenmiştir.
 
 ## 1. Özet
 
@@ -47,7 +47,7 @@ Maskeleme MLAE [4] prensibine uygun olarak PyTorch DataLoader seviyesinde uygula
 
 - **Ortak omurga:** Her derivasyon için paylaşılan 1D-CNN blokları (P, QRS, ST, T morfolojisi); Wei ve ark. [5] bimodal yaklaşımına uygun STFT spektral kolu; Lead Fusing [9] ara katman bağlantıları; Spatio-Temporal Transformer [7] blokları. Uzamsal dikkat yalnızca sağlam derivasyonları anahtar olarak kullanır; böylece kopan derivasyonun ne ölçüde hangi sağlam derivasyonlardan temsil edildiği dikkat ağırlıklarıyla hesaplanır: Attention(Q, K, V) = Softmax(QKᵀ / √d_k) V.
 - **Başlık A (rekonstrüksiyon):** MCMA [8] benzeri, 1D Transpose Conv katmanlarından oluşan simetrik kod çözücü ve IRC ara katman bağlantıları [5].
-- **Başlık B (teşhis):** Sağlam derivasyonlar üzerinde Global Average Pooling + Dense; MI var/yok ve kriz tipi (Anterior/Inferior/Lateral) çıktıları.
+- **Başlık B (teşhis):** Sağlam derivasyonlar üzerinde Global Average Pooling + Dense; Zhou ve ark. [3] ile Ribeiro ve ark. [1] çalışmalarındaki gibi MI var/yok ve kriz tipi (Anterior/Inferior/Lateral) çıktıları.
 - **Genlik farkındalığı:** Derivasyon bazlı z-score her kanalı kendi genliğine böldüğünden, kopan kanalın genliği bilinemez. Sağlam derivasyonların log-genliği derivasyon token'larına eklenmiş ve rekonstrüksiyon fiziksel ölçekte üretilmiştir. Girdi ve kayıp formülü değişmemiştir; kopan kanalın genliğinin modele ulaşmadığı birim testlerle doğrulanmıştır.
 - **Boyut:** 1.29 M parametre.
 
@@ -55,7 +55,7 @@ Maskeleme MLAE [4] prensibine uygun olarak PyTorch DataLoader seviyesinde uygula
 
 L_toplam = 0.4 · L_MSE + 0.6 · L_Focal. L_MSE yalnızca kopan derivasyonlarda hesaplanır. L_Focal [12] (γ = 2) MI/Normal teriminden ve yalnız MI örneklerinde hesaplanan kriz tipi teriminden oluşur. Eğitim AdamW, 5·10⁻⁴ öğrenme oranı, ısınma + kosinüs azalma, batch 32, bfloat16 karma hassasiyetle 15 epoch sürmüştür. Model ve karar eşikleri doğrulama kümesinde seçilmiştir; test kümesi yalnız son değerlendirmede kullanılmıştır.
 
-> [Eğitim donanımı: Başvuruda Colab Pro öngörülmüştü; eğitim Apple M3 (MPS) üzerinde ~2 saatte tamamlandı. Bütçe kullanımı bu bilgiye göre doldurulacak.]
+Eğitim, Araştırma Olanakları tablosunda yer alan Apple M3 geliştirme bilgisayarında (MPS) yaklaşık 2 saatte tamamlanmıştır.
 
 ### 3.5 Değerlendirme
 
@@ -63,12 +63,12 @@ L_toplam = 0.4 · L_MSE + 0.6 · L_Focal. L_MSE yalnızca kopan derivasyonlarda 
 - **Metrikler:** F1, AUROC, duyarlılık, özgüllük, yanlış negatif oranı (FNR); kopan derivasyonlarda RMSE (mV), R², Pearson r; kriz tipi AUROC.
 - **Gerçekçi rekonstrüksiyon ölçümü:** Kopan derivasyonun gerçek genliği kullanılmadan, popülasyon σ değeriyle mV'a çevrilerek ölçülmüştür (sistemin sahada çalıştığı koşul).
 - **Karşılaştırma:** Aynı veriyle, LeadDropout olmadan eğitilen 1D-ResNet [1]. Hipotez havuzlanmış FNR ile (toplam FN / toplam MI, tüm kopma senaryoları) sınanmıştır.
-- **Gürültü testi:** MIT-BIH Noise Stress Test Database'in taban kayması, kas artefaktı ve elektrot hareketi kayıtları, ham sinyalde rastgele 1–4 derivasyona 12/6/0 dB SNR ile eklenmiş, ardından ön işleme hattı uygulanmıştır (36 senaryo). Parazitli derivasyonlar sisteme bildirilmemiştir.
+- **Gürültü testi:** MIT-BIH Noise Stress Test Database'in [13, 14] taban kayması, kas artefaktı ve elektrot hareketi kayıtları, ham sinyalde rastgele 1–4 derivasyona 12/6/0 dB SNR ile eklenmiş, ardından ön işleme hattı uygulanmıştır (36 senaryo). Parazitli derivasyonlar sisteme bildirilmemiştir.
 
 ### 3.6 Arayüz ve açıklanabilirlik (İP2, İP4, İP5)
 
 - **İP2 (Sema Gül Çelik):** React tabanlı gösterge paneli; 12 derivasyonun tek tek açılıp kapatılabildiği EKG kâğıdı görünümü ve Mock-API. Arayüzün kendi kare sayacıyla (EKG çizim döngüsü) dört koşulda 10'ar saniye ölçüm yapılmıştır: 12 derivasyon akış, 4 derivasyon kopması (V1–V4) ve rekonstrüksiyon çizimi, 3D kalp modelinin döndürülmesi, art arda yeni kayıt yüklenmesi. Tüm koşullarda en düşük değer 60 FPS'tir (Apple M3, Chrome 157, 60 Hz ekran; gerçek FastAPI arka ucu ve model ile).
-- **İP4 (Sema Gül Çelik):** 3D kalp modeli (HuBMAP Human Reference Atlas) üzerinde etkilenen duvarın kırmızı gradyanla işaretlenmesi; duvara tıklandığında açılan Click-to-Explain kartı: ST sapması (mm), şüpheli koroner arter (Anterior → LAD, Inferior → RCA, Lateral → LCx), eksik derivasyonlara rağmen karar güveni.
+- **İP4 (Sema Gül Çelik):** Guo ve ark. [10] derivasyon gruplamasına uygun olarak 3D kalp modeli (HuBMAP Human Reference Atlas [15]) üzerinde etkilenen duvarın kırmızı gradyanla işaretlenmesi; duvara tıklandığında açılan Click-to-Explain kartı: ST sapması (mm), şüpheli koroner arter (Anterior → LAD, Inferior → RCA, Lateral → LCx), eksik derivasyonlara rağmen karar güveni.
 - **İP5 (ortak):** FastAPI arka ucu, eğitilmiş modeli Mock-API ile aynı sözleşmeyle sunar. Çıktılar: MI olasılığı, etkilenen duvarlar (doğrulama kümesinde kalibre edilmiş duvar eşikleri), Spatial Attention ağırlıkları, derivasyon önem skorları, kopan derivasyonların rekonstrüksiyonu ve kaynakları, dinamik klinisyen/hasta metinleri ve PDF klinik rapor.
 
 ## 4. Bulgular
@@ -128,14 +128,14 @@ Apple M3 (MPS) üzerinde tek kayıt için 13–22 ms ölçülmüştür (hedef < 
 
 ## 5. İş Paketlerinin Gerçekleşme Durumu
 
-| İP | Planlanan | Sorumlu | Başarı ölçütü | Durum |
-|---|---|---|---|---|
-| İP1 | Veri hazırlama ve ön işleme | Zilan Aykal | Temizlenmiş tensör deposu, `preprocessing.py` | Tamamlandı |
-| İP2 | Gösterge paneli, 12 kanal aç/kapa, Mock-API | Sema Gül Çelik | 60 FPS | Tamamlandı (ölçülen en düşük 60 FPS) |
-| İP3 | LeadDropout + çift başlıklı MAE eğitimi | Zilan Aykal | RMSE < 0.15, eğitilmiş .pth | Tamamlandı |
-| İP4 | 3D kalp ve Click-to-Explain | Sema Gül Çelik | [başvurudaki ölçüt] | Tamamlandı |
-| İP5 | FastAPI entegrasyonu, 1–4 kanal stres testleri | Ortak | F1 > %88 | Tamamlandı |
-| İP6 | Metrikler, optimizasyon, grafikler | Ortak | [başvurudaki ölçüt] | Tamamlandı |
+| İP | Takvim | Faaliyet | Sorumlu | Başarı ölçütü (katkı) | Gerçekleşme |
+|---|---|---|---|---|---|
+| İP1 | 1. ay | PTB-XL temini, etiket matrisleri, 0.5–45 Hz Butterworth, z-score hattı | Zilan Aykal | Temizlenmiş tensör veri deposunun ve `preprocessing.py` modülünün sorunsuz çalışması (%15) | Sağlandı |
+| İP2 | 2. ay | Dashboard iskeleti, 12 kanal aç/kapa, Mock-API | Sema Gül Çelik | Modelden bağımsız çalışan, sahte verilerle akıcı 60 FPS sinyal çizen arayüz prototipi (%15) | Sağlandı: Mock-API ile modelden bağımsız çalışıyor; gerçek arka uçla ölçülen en düşük değer 60 FPS |
+| İP3 | 3. ay | LeadDropout, 1D-CNN + Spatial Attention tabanlı çift başlıklı MAE eğitimi | Zilan Aykal | Sinyal rekonstrüksiyonunda düşük hata (RMSE < 0.15) ve eğitilmiş .pth ağırlıkları (%25) | Sağlandı, bir istisnayla: rastgele 1–4 kopmada RMSE 0.067–0.079 mV; kritik Anterior kopmasında 0.166 mV |
+| İP4 | 4. ay | 3D kalp anatomisi, dikkat ağırlıklarının renklendirilmesi, Click-to-Explain | Sema Gül Çelik | 3D kalp duvarı üzerinde tıklanabilir ve dinamik açıklama üreten etkileşimli XAI modülü (%20) | Sağlandı |
+| İP5 | 5.–6. ay | Modelin FastAPI ile arayüze bağlanması, 1–4 kanal stres testlerinin canlı doğrulanması | Zilan Aykal, Sema Gül Çelik | Eksik kanal koşullarında %88 üzeri F1 sağlayan, entegre çalışan canlı karar destek sistemi (%15) | Sağlandı: tüm kopma senaryolarında F1 0.885–0.923 |
+| İP6 | 7.–9. ay | Başarım metrikleri, model optimizasyonu, grafikler | Zilan Aykal, Sema Gül Çelik | Proje sonuç raporunun ve teslim metinlerinin eksiksiz tamamlanması (%10) | Metrikler, optimizasyon denemeleri ve grafikler tamamlandı; sonuç raporu bu belgeyle hazırlanıyor |
 
 ## 6. Risk Yönetimi
 
@@ -155,11 +155,50 @@ Apple M3 (MPS) üzerinde tek kayıt için 13–22 ms ölçülmüştür (hedef < 
 
 Proje kapsamında, eksik ve gürültülü derivasyon koşullarında MI tespitini koruyan ve kararını 3D anatomik model üzerinde açıklayan uçtan uca bir sistem geliştirilmiştir. Başvuruda tanımlanan teşhis, yanlış negatif ve gecikme hedeflerinin tamamı, rekonstrüksiyon hedefleri ise kritik Anterior kopması dışında sağlanmıştır.
 
-## 9. Yaygın Etki
+## 9. Bütçe Kullanımı
 
-- [IEEE TIPTEKNO / Ulusal Biyomedikal Mühendisliği Kongresi bildirisi: başvuru tarihi ve durum eklenecek]
+| Kalem | Öneride | Tutar | İP | Gerçekleşme |
+|---|---|---|---|---|
+| Bulut GPU (Google Colab Pro vb.) | 6 ay | 3.500 TL | İP3 | [harcama durumu] Eğitim yerel Apple M3 bilgisayarda yapılabildiğinden bulut GPU'ya ihtiyaç [duyuldu / duyulmadı]. |
+| 512 GB harici NVMe SSD | 1 adet | 3.500 TL | İP1, İP3, İP5 | [alındı mı] Tensör deposu (~1 GB), PTB-XL (~3 GB) ve model kontrol noktaları |
+| 512 GB harici NVMe SSD | 1 adet | 3.500 TL | İP2, İP4, İP5 | [alındı mı] Arayüz bileşenleri, Mock-API verileri, entegrasyon testleri |
+| **Toplam** | | **10.500 TL** | | [gerçekleşen toplam] |
+
+## 10. Yaygın Etki
+
+- **Bilimsel/akademik:** Rekonstrüksiyon metrikleri (R², RMSE) ve eksik kanal stres testi sonuçları IEEE TIPTEKNO veya Ulusal Biyomedikal Mühendisliği Kongresi'nde bildiri olarak sunulacaktır. [Başvuru tarihi ve durum eklenecek.]
+- **Prototip:** Derivasyon kopması senaryolarını simüle eden, eksik EKG sinyalini sağlam derivasyonlardan tamamlayan ve 3D kalp modeli üzerinde karar gerekçesi sunan (Click-to-Explain) karar destek yazılım prototipi geliştirilmiştir.
+- **Yeni proje:** Öneride öngörülen ikinci dönem çalışmaları için altyapı hazırdır: gerçek gürültü kayıtlarıyla stres testi hattı (`src/noise_test.py`) kurulmuş, arayüzün FPS ve çıkarım gecikmesi ölçülmüştür; modüler veri hattı ve model, EEG gibi farklı fizyolojik zaman serilerine uyarlanabilecek yapıdadır.
 - Kaynak kodu ve eğitilmiş model: [GitHub deposu bağlantısı, erişim durumu]
 
-## 10. Kaynaklar
+## 11. Kaynaklar
 
-[Başvuru raporundaki kaynakça aynen kullanılacak; metinde geçen numaralar: [1] 1D-ResNet, [4] MLAE, [5] Wei ve ark., [7] Spatio-Temporal Transformer, [8] MCMA, [9] Lead Fusing, [11] PTB-XL, [12] Focal Loss. Eklenecek: MIT-BIH Noise Stress Test Database (Moody ve ark., 1984); HuBMAP Human Reference Atlas 3D modeli.]
+[1] Ribeiro, A. H., Ribeiro, M. H., Paixão, G. M., Oliveira, D. M., Gomes, P. R., Canazart, J. A., ... & Antonio, L. R. (2020). Automatic diagnosis of the 12-lead ECG using a deep neural network. *Nature Communications*, 11(1), 1760. https://doi.org/10.1038/s41467-020-15432-4
+
+[2] He, K., Chen, X., Xie, S., Li, Y., Dollár, P., & Girshick, R. (2022). Masked autoencoders are scalable vision learners. *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 16000–16009. https://doi.org/10.1109/CVPR52688.2022.01553
+
+[3] Zhou, Y., Diao, X., Huo, Y., Liu, Y., Sun, Z., Fan, X., & Zhao, W. (2025). Enhancing automatic multilabel diagnosis of electrocardiogram signals: A masked transformer approach. *Computers in Biology and Medicine*, 196, 110674. https://doi.org/10.1016/j.compbiomed.2025.110674
+
+[4] Zhang, H., Liu, W., Shi, J., Chang, S., Wang, H., He, J., & Huang, Q. (2022). MaeFE: Masked autoencoders family of electrocardiogram for self-supervised pretraining and transfer learning. *IEEE Transactions on Instrumentation and Measurement*, 72, 1–15. https://doi.org/10.1109/TIM.2022.3228267
+
+[5] Wei, Y., Lian, C., Xu, B., Zhao, P., Yang, H., & Zeng, Z. (2025). Bimodal Masked Autoencoders with internal representation connections for electrocardiogram classification. *Pattern Recognition*, 161, 111311. https://doi.org/10.1016/j.patcog.2024.111311
+
+[6] Presacan, O., Dorobanţiu, A., Isaksen, J. L., Willi, T., Graff, C., Riegler, M. A., ... & Thambawita, V. (2025). Evaluating the feasibility of 12-lead electrocardiogram reconstruction from limited leads using deep learning. *Communications Medicine*, 5(1), 139. https://doi.org/10.1038/s43856-025-00814-w
+
+[7] Na, Y., Park, M., Tae, Y., & Joo, S. (2024). Guiding masked representation learning to capture spatio-temporal relationship of electrocardiogram. *International Conference on Learning Representations (ICLR 2024)*, pp. 15012–15035. https://doi.org/10.48550/arXiv.2310.11899
+
+[8] Chen, J., Wu, W., Liu, T., & Hong, S. (2024). Multi-channel masked autoencoder and comprehensive evaluations for reconstructing 12-lead ECG from arbitrary single-lead ECG. *npj Cardiovascular Health*, 1(1), 34. https://doi.org/10.1038/s44325-024-00036-4
+
+[9] Liu, X., Xu, Y., Xu, H., He, L., Long, S., Huang, Y., ... & Liu, X. (2025). Advancing interpretable cardiac disease diagnosis via a transformer-convolutional hybrid network on electrocardiograms. *Engineering Applications of Artificial Intelligence*, 152, 110675. https://doi.org/10.1016/j.engappai.2025.110675
+
+[10] Guo, L., Zhan, Q., Yang, J., An, Y., Long, J., & Ma, N. (2025). Lead-grouped multi-stage learning for myocardial infarction localization. *Methods*, 234, 315–323. https://doi.org/10.1016/j.ymeth.2025.01.015
+
+[11] Wagner, P., Strodthoff, N., Bousseljot, R. D., Kreiseler, D., Lunze, F. I., Samek, W., & Schaeffter, T. (2020). PTB-XL, a large publicly available electrocardiography dataset. *Scientific Data*, 7(1), 154. https://doi.org/10.1038/s41597-020-0495-6
+
+[12] Lin, T. Y., Goyal, P., Girshick, R., He, K., & Dollár, P. (2020). Focal loss for dense object detection. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 42(2), 318–327. https://doi.org/10.1109/TPAMI.2018.2858826
+
+[13] Moody, G. B., Muldrow, W. E., & Mark, R. G. (1984). A noise stress test for arrhythmia detectors. *Computers in Cardiology*, 11, 381–384.
+
+[14] Goldberger, A. L., Amaral, L. A. N., Glass, L., Hausdorff, J. M., Ivanov, P. C., Mark, R. G., ... & Stanley, H. E. (2000). PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic signals. *Circulation*, 101(23), e215–e220. https://doi.org/10.1161/01.CIR.101.23.e215
+
+[15] HuBMAP Consortium. Human Reference Atlas 3D Reference Objects (Visible Human Male heart). https://humanatlas.io, CC BY 4.0.
