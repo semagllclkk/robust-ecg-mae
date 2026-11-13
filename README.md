@@ -22,10 +22,13 @@ PTB-XL test kümesinde (strat_fold 10, 550 MI + 550 Normal, eğitimde görülmem
 | Klasik 1D-ResNet'e göre yanlış negatif ≥ %25 azalma | %49.2 |
 | Gürültülü derivasyonlarda (gerçek NSTDB gürültüsü, 36 senaryo) F1 > 0.88 | 36/36 senaryo |
 | Çıkarım < 50 ms | 13–22 ms (Apple M3) |
+| Arayüz akıcı 60 FPS | Tüm ölçüm koşullarında en düşük 60 FPS (Mock-API ve gerçek backend) |
 
-Açık konu: V1–V4'ün dördü birlikte koptuğunda R² 0.544 (teşhis F1 0.885 ile hedefin üstünde).
+Açık konular:
+- V1–V4'ün dördü birlikte koptuğunda rekonstrüksiyon R²'si 0.544. Teşhis F1'i bu durumda da 0.885 ile hedefin üstünde. Risk 1'in iki B planı (Einthoven kısıtı, uzamsal komşuluk regülarizasyonu) denendi; bu senaryoyu iyileştirmedi.
+- Lateral (yan) duvar ayrımı zayıf: test kümesindeki 20 Lateral MI kaydının 4'ünde yan duvar işaretleniyor, çoğu Anterior olarak gösteriliyor. Eğitimde yalnız 161 Lateral örnek var.
 
-Ayrıntılar ve grafikler: [docs/SONUCLAR.md](docs/SONUCLAR.md), [results/figures/](results/figures/). Canlı stres testi: [docs/STRES_TESTI.md](docs/STRES_TESTI.md).
+Ayrıntılar ve grafikler: [docs/SONUCLAR.md](docs/SONUCLAR.md), [results/figures/](results/figures/). Canlı stres testi: [docs/STRES_TESTI.md](docs/STRES_TESTI.md). Proje sonuç raporu taslağı: [docs/SONUC_RAPORU_TASLAK.md](docs/SONUC_RAPORU_TASLAK.md).
 
 ## Hızlı başlangıç (arayüz ve eğitilmiş model)
 
@@ -46,7 +49,8 @@ Arayüzün başlığında `FastAPI · MAE (PTB-XL, epoch 15, genlik farkındalı
 Arayüzde:
 - Senaryo seçilir: Normal, Anterior, Inferior ya da Lateral MI.
 - Derivasyonlar koparılır (en fazla 4); kopan derivasyonun rekonstrüksiyonu mor kesikli çizgiyle gösterilir.
-- 3D kalpte etkilenen duvara tıklanınca Click-to-Explain kartı açılır.
+- Model hasar bulduğunda 3D kalpte ilgili duvar kırmızı yanar ve kamera o duvara döner (alt duvar için Alt, yan duvar için Sol görünüm). Kopuk derivasyonların duvarı pembe yanıp söner.
+- Etkilenen duvara tıklanınca Click-to-Explain kartı açılır.
 - "Yeni hasta" ile aynı senaryodan başka bir kayda geçilir; "Rapor (PDF)" ile hastaya özel klinik rapor alınır.
 
 ## Tam veriyle çalışma (eğitim ve değerlendirme)
@@ -82,6 +86,7 @@ Backend, `data/processed` varsa tam test kümesini, yoksa `data/demo`'yu kullan�
 | Çift başlıklı MAE: 1D-CNN omurga, STFT (bimodal), Spatio-Temporal Transformer (Spatial Attention), Lead Fusing IRC, 1D Transpose Conv kod çözücü, GAP + Dense teşhis başlığı | `src/model.py` |
 | Kayıp: 0.4·MSE (yalnızca kopan derivasyonlar) + 0.6·Focal | `src/losses.py` |
 | Einthoven üçgeni kısıtı (Risk 1 B planı) | `src/einthoven.py` |
+| Uzamsal komşuluk regülarizasyonu (Risk 1 B planı, isteğe bağlı `--spatial-prior`; ana modelde kapalı) | `src/spatial_prior.py` |
 | Metrikler (F1, AUROC, FNR, RMSE, R², Pearson r) | `src/metrics.py` |
 | FastAPI backend, Click-to-Explain verisi, PDF raporu | `src/main.py`, `src/report_text.py`, `src/clinical_report.py`, `src/st_analysis.py` |
 | ONNX dışa aktarımı (Risk 2 B planı) | `src/export_onnx.py` |
