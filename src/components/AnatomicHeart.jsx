@@ -15,6 +15,9 @@ const VIEWS = [
   { value: 'inferior', label: 'Alt' },
 ];
 
+// Hasarlı duvarın görüldüğü bakış açısı: alt duvar diyaframa oturduğu için önden görünmez
+const WALL_VIEW = { anterior: 'anterior', inferior: 'inferior', lateral: 'left-lateral' };
+
 const LAYERS = [
   ['vessels', 'Büyük damarlar'],
   ['coronary', 'Koroner arterler'],
@@ -106,6 +109,17 @@ export default function AnatomicHeart({ disconnectedLeads = [], prediction = nul
       ),
     [highlightedWalls, userOverride, prediction],
   );
+
+  // Kamera vurgulanan duvara döner (birden fazlaysa en olası olana); kullanıcı sonra elle çevirebilir
+  const focusWall = useMemo(() => {
+    if (userOverride) return selectedWall;
+    const probability = (wall) => prediction?.wallProbabilities?.[wall] ?? 0;
+    return modelWalls.reduce((best, wall) => (best === null || probability(wall) > probability(best) ? wall : best), null);
+  }, [userOverride, selectedWall, modelWalls, prediction]);
+
+  useEffect(() => {
+    setCameraView(WALL_VIEW[focusWall] ?? 'anterior');
+  }, [focusWall]);
 
   // Kablosu kopan derivasyonların ait olduğu duvarlar
   const affectedRegions = useMemo(
