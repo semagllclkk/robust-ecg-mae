@@ -243,3 +243,19 @@ def test_spatial_prior_weight_zero_leaves_loss_unchanged():
     reg, parts = MultiTaskLoss(spatial_prior=0.1)(out, x, target)
     assert parts0["prior"] == 0.0 and parts["prior"] > 0
     assert reg.item() == pytest.approx(base.item() + 0.1 * parts["prior"], rel=1e-5)
+
+
+def test_wall_alpha_upweights_rare_wall_and_none_is_unchanged():
+    from src.losses import MultiTaskLoss
+    torch.manual_seed(0)
+    out = {"mi_logit": torch.zeros(4), "wall_logits": torch.zeros(4, 3), "recon": None,
+           "M": torch.ones(4, 12)}
+    target = {"mi": torch.ones(4), "walls": torch.tensor([[0, 0, 1.0]] * 4)}
+    x = torch.zeros(4, 12, 1000)
+    _, base = MultiTaskLoss()(out, x, target)
+    _, same = MultiTaskLoss(wall_alpha=None)(out, x, target)
+    _, rare = MultiTaskLoss(wall_alpha=[0.47, 0.45, 0.84])(out, x, target)
+    assert same["wall"] == base["wall"]
+    # Yalnız Lateral pozitif: Lateral pozitif terimi 0.84, diğer duvarların negatif terimi 0.53/0.55 ile ölçeklenir
+    w = binary_focal_loss(torch.zeros(1), torch.ones(1)).item()
+    assert rare["wall"] == pytest.approx(w * (0.84 + 0.53 + 0.55) / 3, rel=1e-4)

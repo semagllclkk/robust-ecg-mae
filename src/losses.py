@@ -41,13 +41,15 @@ def binary_focal_loss(logits, targets, gamma=2.0, alpha=None, reduction="mean"):
 
 
 class MultiTaskLoss(nn.Module):
-    def __init__(self, alpha_mse=0.4, beta_focal=0.6, gamma=2.0, focal_alpha=None, spatial_prior=0.0):
+    def __init__(self, alpha_mse=0.4, beta_focal=0.6, gamma=2.0, focal_alpha=None, spatial_prior=0.0, wall_alpha=None):
         super().__init__()
         self.alpha_mse = alpha_mse
         self.spatial_prior = spatial_prior  # Risk 1 B planı: uzamsal komşuluk regülarizasyonu ağırlığı (0 = kapalı)
         self.beta_focal = beta_focal
         self.gamma = gamma
         self.focal_alpha = focal_alpha
+        # Duvar başına Focal α (seyrek Lateral duvar için); None = ağırlıksız
+        self.wall_alpha = None if wall_alpha is None else torch.as_tensor(wall_alpha, dtype=torch.float32)
 
     def forward(self, out, signal, target):
         mi = target["mi"]
@@ -55,7 +57,8 @@ class MultiTaskLoss(nn.Module):
 
         is_mi = mi > 0.5
         if is_mi.any():
-            wall = binary_focal_loss(out["wall_logits"][is_mi], target["walls"][is_mi], self.gamma)
+            wall_alpha = None if self.wall_alpha is None else self.wall_alpha.to(mi.device)
+            wall = binary_focal_loss(out["wall_logits"][is_mi], target["walls"][is_mi], self.gamma, wall_alpha)
         else:
             wall = out["wall_logits"].sum() * 0.0
         focal = cls + wall

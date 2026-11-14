@@ -147,7 +147,7 @@ Apple M3 (MPS) üzerinde tek kayıt için 13–22 ms ölçülmüştür (hedef < 
 
 1. **Kritik Anterior rekonstrüksiyonu:** V1–V4'ün dördü birlikte koptuğunda sağ prekordiyal bölgenin bilgisi kalan V5, V6 ve ekstremite derivasyonlarında fiziksel olarak tam bulunmamaktadır. Teşhis başarımı ise bu senaryoda da hedefin üzerindedir (F1 0.885).
 2. **Sınıf oranı:** Test kümesi dengelidir. MI'ın daha seyrek olduğu gerçek popülasyonda F1 daha düşük çıkar; AUROC, duyarlılık ve özgüllük bu orandan etkilenmez.
-3. **Lateral MI:** Test kümesinde yalnız 20 Lateral MI kaydı bulunduğundan bu duvarın sonuçları istatistiksel olarak daha zayıftır.
+3. **Lateral MI:** Eğitim kümesindeki MI kayıtlarında yalnız 161 Lateral örnek bulunmaktadır (Anterior 2.466, Inferior 2.618) ve bunların yaklaşık yarısı Anterior etiketini de taşımaktadır. Test kümesindeki 20 Lateral MI kaydının 4'ünde yan duvar işaretlenmekte, çoğu Anterior olarak gösterilmektedir. İP6 optimizasyonu kapsamında Focal Loss sınıf ağırlığı (α) duvar başına uygulanmış; Lateral tespiti 7/20'ye yükselmiş, ancak özgüllük 0.935'ten 0.891'e düşmüş ve en düşük F1 hedef sınırına (0.880) inmiştir. Doğrulama MI AUROC'u eşit düzeyde olduğundan ana model korunmuştur. Test kümesinde 20 kayıt bulunduğundan bu duvarın sonuçları istatistiksel olarak zayıftır.
 4. **Gürültülü derivasyon tespiti:** MAE tutarlılığıyla parazitli derivasyon tespiti denenmiş, katkı sağlamamıştır. Model parazitli derivasyonları ayrı bir tespit adımı olmadan tolere etmektedir.
 5. **Klinik doğrulama:** Sonuçlar tek bir açık veri kümesine dayanmaktadır; klinik kullanım öncesinde dış veri kümelerinde ve prospektif olarak doğrulanması gerekir.
 

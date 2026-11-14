@@ -134,6 +134,27 @@ Raporun Risk 1 B planı, 3–4 kanal kopmasında Spatial Attention katmanına "�
 
 **Sonuç:** Komşuluk regülarizasyonu kritik Anterior rekonstrüksiyonunu iyileştirmedi. Dikkat ağırlıkları önsele yaklaştı (KL 0.85 → 0.03), ama V1–V4'ün dördü birlikte koptuğunda eksik bilgi kalan derivasyonlarda bulunmuyor; dikkatin hangi kanallara yöneldiği bu sınırı değiştirmiyor. Ana model, doğrulama AUROC'u daha yüksek olduğu için değişmedi. Eğitimin tamamlanmamış olması bu sonucu etkileyecek görünmüyor: kritik Anterior R²'si iki modelde de aynı ve doğrulama eğrileri 11. epoch'ta doygunluğa ulaşmıştı.
 
+## Lateral duvar ayrımı: duvar başına Focal α denemesi (14.11.2026)
+
+**Sorun:** Testteki 20 Lateral MI kaydının yalnız 4'ünde yan duvar işaretleniyor; çoğu Anterior olarak gösteriliyor. Bu 20 kaydın 7'sinde gerçek tanı Anterior + Lateral olduğundan "Anterior" yarı doğrudur. Asıl karışma, yalnız yan duvar MI'ı olan 13 kayıtta: model bu kayıtlarda P(Lateral ∣ MI) değerini 0.1–0.4 arasında veriyor. Kaynağı veri dengesizliği: eğitimdeki MI kayıtlarında 2.466 Anterior, 2.618 Inferior ve yalnız 161 Lateral örnek var; Lateral örneklerin yarısı (94/201) Anterior etiketini de taşıyor.
+
+**Deneme:** Rapordaki Focal Loss'un sınıf ağırlığı (α) duvar terimine duvar başına uygulandı. Ağırlıklar MI kayıtlarındaki pozitif/negatif sayılarının kareköküyle dengelendi: Anterior 0.47, Inferior 0.45, Lateral 0.84 (`python -m src.train --amplitude-aware --wall-alpha sqrt`). Kayıp formülü (0.4·MSE + 0.6·Focal) değişmedi. Model: `models/mae_ecg_checkpoint_lateral.pth`, duvar eşikleri: `models/wall_thresholds_lateral.json`, sonuçlar: `results/lateral/`.
+
+| Ölçüt | Ana model | Duvar α denemesi |
+|---|---|---|
+| Doğrulama MI AUROC (model seçim ölçütü) | **0.9778** | 0.9777 |
+| Doğrulama Lateral AUROC / kalibre F1 | 0.958 / 0.554 | **0.968 / 0.644** |
+| Test: Lateral kayıtlarda yan duvar işaretlendi | 4/20 | **7/20** |
+| Test: yalnız yan duvar MI'ında | 3/13 | **6/13** |
+| Test: yan duvarı olmayan MI'da yanlış "Lateral" | **3/530** | 18/530 |
+| Test: Anterior / Inferior doğru duvar | 285/306, 266/327 | 288/306, 273/327 |
+| Test: özgüllük, 12 kanal | **0.935** | 0.891 |
+| Test: en düşük F1, kopma senaryoları (hedef > 0.88) | **0.885** | 0.880 |
+| Test: yanlış negatif azalması (havuzlanmış) | %49.2 | **%65.4** |
+| Test: kritik Anterior R² | 0.544 | 0.563 |
+
+**Karar:** Ana model korundu. Doğrulama MI AUROC'u iki modelde eşit düzeyde (0.9778 / 0.9777) olduğundan model seçim ölçütü değişikliği gerektirmiyor. Yeni modelin MI karar eşiği (doğrulamada seçilen 0.41) daha düşük; yanlış negatifler azalırken özgüllük düşüyor ve en düşük F1 hedef sınırına (0.880) iniyor. Lateral kazancı 20 kayıtta 3 kayıttır ve 15 ek yanlış alarm getirir; bu örnek sayısıyla istatistiksel olarak zayıftır. Lateral duvar ayrımı, eğitim verisindeki az örnek nedeniyle sınırlılık olarak raporlanır.
+
 ## Gürültülü derivasyon stres testi
 
 Raporun amacı (Md. 1.2), 1–4 derivasyonun "tamamen koptuğu **veya parazitlendiği**" koşullarda tanı başarımını korumaktır. Kopma testlerine ek olarak gürültü testi yapıldı (`python -m src.noise_test`).

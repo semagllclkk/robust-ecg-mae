@@ -1,0 +1,31 @@
+{
+  "checkpoint": "models/mae_ecg_checkpoint_lateral.pth",
+  "checkpoint_sha256": "5466da6122523e29720dc56eec3b61d1c5763de7df2b73396b7e16117bf63b2d",
+  "epoch": 13,
+  "split": "val (strat_fold 9)",
+  "thresholds": {
+    "Anterior": 0.47,
+    "Inferior": 0.52,
+    "Lateral": 0.57
+  },
+  "details": {
+    "Anterior": {
+      "threshold": 0.47,
+      "positives": 612,
+      "val_f1_at_0.5": 0.9043,
+      "val_f1_calibrated": 0.9111
+    },
+    "Inferior": {
+      "threshold": 0.52,
+      "positives": 652,
+      "val_f1_at_0.5": 0.9134,
+      "val_f1_calibrated": 0.9159
+    },
+    "Lateral": {
+      "threshold": 0.57,
+      "positives": 40,
+      "val_f1_at_0.5": 0.4915,
+      "val_f1_calibrated": 0.6437
+    }
+  }
+}
