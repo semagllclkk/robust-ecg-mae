@@ -1,4 +1,4 @@
-import { LEADS, SCENARIOS, WALLS } from '../data/ecg.js';
+import { LEADS, SCENARIOS, WALL_LEADS, WALLS } from '../data/ecg.js';
 import Panel from './ui/Panel.jsx';
 import { Button, ProbabilityBar } from './ui/controls.jsx';
 
@@ -157,6 +157,8 @@ export function DiagnosisPanel({ prediction, disconnectedLeads }) {
   const isMi = walls.length > 0;
   const arteries = walls.map((wall) => WALLS[wall]?.artery).filter(Boolean);
   const warning = prediction?.report?.warning;
+  // V1–V4 birlikte koptuğunda sağ-ön göğüs bilgisi kalan derivasyonlarda yok; rekonstrüksiyon yaklaşık (test R² 0.54)
+  const anteriorLost = WALL_LEADS.anterior.every((lead) => disconnectedLeads.includes(lead));
   const signed = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}`;
 
   return (
@@ -176,6 +178,12 @@ export function DiagnosisPanel({ prediction, disconnectedLeads }) {
           {warning && (
             <p className="m-0 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2 text-xs text-warning" role="alert">
               {warning}
+            </p>
+          )}
+          {anteriorLost && (
+            <p className="m-0 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-2 text-xs text-warning" role="alert">
+              V1–V4 birlikte kopuk: bu derivasyonların rekonstrüksiyonu yaklaşıktır. ST sapması bu çizgilerden
+              okunmamalıdır; teşhis sağlam derivasyonlara dayanır.
             </p>
           )}
           <div>
