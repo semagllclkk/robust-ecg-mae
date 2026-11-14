@@ -155,6 +155,26 @@ Raporun Risk 1 B planı, 3–4 kanal kopmasında Spatial Attention katmanına "�
 
 **Karar:** Ana model korundu. Doğrulama MI AUROC'u iki modelde eşit düzeyde (0.9778 / 0.9777) olduğundan model seçim ölçütü değişikliği gerektirmiyor. Yeni modelin MI karar eşiği (doğrulamada seçilen 0.41) daha düşük; yanlış negatifler azalırken özgüllük düşüyor ve en düşük F1 hedef sınırına (0.880) iniyor. Lateral kazancı 20 kayıtta 3 kayıttır ve 15 ek yanlış alarm getirir; bu örnek sayısıyla istatistiksel olarak zayıftır. Lateral duvar ayrımı, eğitim verisindeki az örnek nedeniyle sınırlılık olarak raporlanır.
 
+## Kritik Anterior: eğitimde kritik kopma sıklığının artırılması (14.11.2026)
+
+**Amaç:** V1–V4'ün dördü birlikte koptuğunda RMSE'yi hedefin (0.15) altına indirmek (ana model 0.166 mV). Eğitimde bu durum örneklerin yalnız ~%2.5'inde simüle ediliyordu: batch'te 4 kanal kopması (k ∈ [1, 4]), kritik kopma (olasılık 0.3) ve Anterior duvarın seçilmesi (1/3) birlikte gerekiyordu.
+
+**Deneme:** Kritik kopma olasılığı 0.3'ten 0.6'ya çıkarıldı (`python -m src.train --amplitude-aware --critical-prob 0.6`). Rapordaki LeadDropout kuralı (batch başına k ∈ [1, 4]) ve kayıp formülü değişmedi; kod değişikliği yok. Model: `models/mae_ecg_checkpoint_kritik.pth`, sonuçlar: `results/kritik/`.
+
+| Ölçüt | Ana model | Kritik kopma 0.6 |
+|---|---|---|
+| Doğrulama MI AUROC / F1 | 0.9778 / 0.915 | 0.9784 / 0.923 |
+| Doğrulama R² / RMSE (karışık kopma) | 0.839 / 0.0857 mV | 0.835 / 0.0859 mV |
+| Test kritik Anterior RMSE (hedef < 0.15) | 0.166 mV | 0.156 mV |
+| Test kritik Anterior R² | 0.544 | 0.572 |
+| Test kritik Anterior F1 (hedef > 0.88) | **0.885** | 0.875 |
+| Test kritik Inferior / Lateral R² | 0.886 / 0.863 | 0.921 / 0.877 |
+| Test rastgele 1–4 kopma R² | 0.829–0.871 | 0.810–0.864 |
+| Test özgüllük, 12 kanal | 0.935 | 0.951 |
+| Test yanlış negatif azalması (havuzlanmış) | **%49.2** | %34.1 |
+
+**Karar:** Ana model korundu. Denemenin amacı olan RMSE < 0.15 sağlanmadı (0.156). Doğrulama ölçütlerindeki fark (AUROC +0.0006) gürültü düzeyindedir ve model değişikliğini gerektirmez. Test bulgusu olarak kayda geçer: yeni modelin karar eşiği (doğrulamada 0.49) daha yüksektir; özgüllük artarken yanlış negatifler artmış, kritik Anterior F1'i hedefin altına (0.875) inmiştir. Kritik Anterior rekonstrüksiyonu, iki B planı ve bu denemeyle birlikte, kalan derivasyonlardaki bilgi sınırına bağlı bir sınırlılık olarak raporlanır.
+
 ## Gürültülü derivasyon stres testi
 
 Raporun amacı (Md. 1.2), 1–4 derivasyonun "tamamen koptuğu **veya parazitlendiği**" koşullarda tanı başarımını korumaktır. Kopma testlerine ek olarak gürültü testi yapıldı (`python -m src.noise_test`).
