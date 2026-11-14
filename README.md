@@ -28,6 +28,39 @@ Açık konular:
 - V1–V4'ün dördü birlikte koptuğunda rekonstrüksiyon R²'si 0.544. Teşhis F1'i bu durumda da 0.885 ile hedefin üstünde. Risk 1'in iki B planı (Einthoven kısıtı, uzamsal komşuluk regülarizasyonu) denendi; bu senaryoyu iyileştirmedi. Eğitimde kritik kopma sıklığını artırmak RMSE'yi 0.166'dan 0.156 mV'a indirdi ama hedefe (0.15) ulaşmadı; ana model korundu.
 - Lateral (yan) duvar ayrımı zayıf: test kümesindeki 20 Lateral MI kaydının 4'ünde yan duvar işaretleniyor, çoğu Anterior olarak gösteriliyor. Eğitimde yalnız 161 Lateral örnek var. Duvar başına Focal α denemesi (`--wall-alpha sqrt`) bunu 7/20'ye çıkardı ama özgüllüğü düşürdü; ana model korundu ([docs/SONUCLAR.md](docs/SONUCLAR.md)).
 
+### 4 kablo koptuğunda sistem ne yapar?
+
+Sistem 4 kablo koptuğunda da çalışır. İki ayrı çıktı vardır ve ikisini ayırmak gerekir:
+
+1. **Teşhis:** MI var mı, hangi duvar. Projenin asıl amacı budur.
+2. **Yeniden çizim (rekonstrüksiyon):** Kopan derivasyonların sinyalinin sağlam derivasyonlardan tahmin edilip ekranda mor kesikli çizgiyle gösterilmesi.
+
+Test kümesinde (ana model):
+
+| Kopan kablolar | Teşhis F1 (hedef > 0.88) | Yeniden çizim R² (hedef > 0.80) | Yeniden çizim RMSE (hedef < 0.15) |
+|---|---|---|---|
+| Rastgele 1 kanal | 0.921 ✓ | 0.871 ✓ | 0.067 mV ✓ |
+| Rastgele 2 kanal | 0.917 ✓ | 0.863 ✓ | 0.069 mV ✓ |
+| Rastgele 3 kanal | 0.923 ✓ | 0.849 ✓ | 0.073 mV ✓ |
+| Rastgele 4 kanal | 0.919 ✓ | 0.829 ✓ | 0.079 mV ✓ |
+| Inferior'un 3 kanalı (II, III, aVF) | 0.902 ✓ | 0.886 ✓ (Einthoven ile 1.000) | 0.035 mV ✓ |
+| Lateral'in 4 kanalı (I, aVL, V5, V6) | 0.910 ✓ | 0.863 ✓ | 0.070 mV ✓ |
+| **Anterior'un 4 kanalı (V1, V2, V3, V4)** | **0.885 ✓** | **0.544 ✗** | **0.166 mV ✗** |
+
+**Tek zor durum: V1, V2, V3 ve V4'ün dördü birlikte koptuğunda.**
+
+- **Teşhis bu durumda da hedefin üstündedir** (F1 0.885). Klasik 1D-ResNet aynı durumda 0.813'te kalır.
+- **Yeniden çizim yaklaşıktır.** Dalganın şekli büyük ölçüde doğrudur (Pearson r 0.82), ama genliği güvenilir değildir.
+- **Neden:** Bu dört elektrot göğsün sağ-ön bölgesine yan yana dizilidir. Dördü birden gidince o bölgeyi doğrudan gören hiçbir derivasyon kalmaz. Kalan V5, V6 ve ekstremite derivasyonları o bölgeyi uzaktan ve kısmen görür. Eksik olan bilgi verinin içinde yoktur; bu bir model hatası değil, fiziksel bir sınırdır.
+- **Denenenler:** Üç yöntem denendi, hiçbiri hedefe ulaştırmadı. Ana model korundu. Ayrıntılar [docs/SONUCLAR.md](docs/SONUCLAR.md)'de.
+
+  | Yöntem | Sonuç |
+  |---|---|
+  | Einthoven kısıtı (Risk 1 B planı) | Yalnız ekstremite derivasyonlarına uygulanabildiği için V1–V4'e etkisi yok |
+  | Uzamsal komşuluk matrisi (Risk 1 B planı) | R² 0.544 → 0.544 |
+  | Eğitimde bu kopmayı iki kat sık simüle etmek | RMSE 0.166 → 0.156 mV, ama teşhis F1'i 0.875'e düştü |
+- **Arayüzdeki uyarı:** V1–V4'ün dördü birlikte kopuk olduğunda "Model çıktısı" panelinde şu uyarı çıkar: *"V1–V4 birlikte kopuk: bu derivasyonların rekonstrüksiyonu yaklaşıktır. ST sapması bu çizgilerden okunmamalıdır; teşhis sağlam derivasyonlara dayanır."* Uyarının amacı, hekimin yaklaşık çizilmiş bu sinyaller üzerinden ST sapması ölçmeye çalışmasını önlemektir. Başka herhangi bir 1–4 kablo kopmasında uyarı çıkmaz.
+
 Ayrıntılar ve grafikler: [docs/SONUCLAR.md](docs/SONUCLAR.md), [results/figures/](results/figures/). Canlı stres testi: [docs/STRES_TESTI.md](docs/STRES_TESTI.md). Proje sonuç raporu taslağı: [docs/SONUC_RAPORU_TASLAK.md](docs/SONUC_RAPORU_TASLAK.md).
 
 ## Hızlı başlangıç (arayüz ve eğitilmiş model)
