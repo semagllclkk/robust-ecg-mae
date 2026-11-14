@@ -19,6 +19,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from src.dataset import PTBXLProcessedDataset, population_sigma
+from src.ecg_constants import WALL_NAMES
 from src.einthoven import einthoven_complete
 from src.lead_dropout import LeadDropoutCollate, apply_lead_mask, full_keep_mask, random_keep_mask
 from src.losses import MultiTaskLoss
@@ -155,6 +156,9 @@ def main():
     parser.add_argument("--gamma", type=float, default=2.0, help="Focal Loss odak parametresi")
     parser.add_argument("--focal-alpha", default="auto",
                         help="Focal Loss MI sınıf ağırlığı: 'auto' = 1 - eğitimdeki MI oranı, 'none' = ağırlıksız, ya da sayı")
+    parser.add_argument("--wall-alpha", default="none", choices=["none", "sqrt"],
+                        help="Duvar başına Focal α: 'sqrt' = MI kayıtlarında pozitif/negatif sayısının kareköküyle dengeli "
+                             "(seyrek Lateral duvar), 'none' = ağırlıksız")
     parser.add_argument("--patience", type=int, default=5, help="Doğrulama AUROC iyileşmezse erken durdurma")
     parser.add_argument("--no-amp", action="store_true", help="bfloat16 karışık hassasiyeti kapat")
     parser.add_argument("--limit-batches", type=int, default=None, help="Epoch başına batch sınırı (deneme için)")
@@ -195,6 +199,14 @@ def main():
     else:
         focal_alpha = float(args.focal_alpha)
 
+    wall_alpha = None
+    if args.wall_alpha == "sqrt":
+        walls = train_set.walls[train_set.labels == 1].astype(np.float64)
+        n_pos = walls.sum(axis=0)
+        n_neg = len(walls) - n_pos
+        wall_alpha = (np.sqrt(n_neg) / (np.sqrt(n_neg) + np.sqrt(n_pos))).round(3).tolist()
+        print(f"Duvar Focal α (karekök dengeli): {dict(zip(WALL_NAMES, wall_alpha))}")
+
     if args.arch == "mae":
         config = dict(in_channels=12, seq_len=1000, embed_dim=128, depth=2, num_heads=4)
         if args.amplitude_aware:
@@ -204,7 +216,8 @@ def main():
         config = dict(in_channels=12)
         alpha_mse = 0.0  # 1D-ResNet rekonstrüksiyon yapmaz
     model = build_model(args.arch, config).to(device)
-    criterion = MultiTaskLoss(alpha_mse, args.beta_focal, args.gamma, focal_alpha, spatial_prior=args.spatial_prior)
+    criterion = MultiTaskLoss(alpha_mse, args.beta_focal, args.gamma, focal_alpha, spatial_prior=args.spatial_prior,
+                              wall_alpha=wall_alpha)
     print(f"Kayıp: {alpha_mse}·MSE(maskeli) + {args.beta_focal}·Focal(γ={args.gamma}, "
           f"α={focal_alpha if focal_alpha is None else round(focal_alpha, 3)})"
           + (f" + {args.spatial_prior}·KL(komşuluk önseli ‖ Spatial Attention)" if args.spatial_prior > 0 else ""))
@@ -287,6 +300,7 @@ def main():
                         "val_metrics": {k: v for k, v in val.items() if not k.startswith("_")},
                         "threshold": threshold, "focal_alpha": focal_alpha, "focal_gamma": args.gamma,
                         "alpha_mse": alpha_mse, "beta_focal": args.beta_focal, "spatial_prior": args.spatial_prior,
+                        "wall_alpha": wall_alpha,
                         "lead_dropout": {"min_drop": args.min_drop, "max_drop": args.max_drop,
                                          "critical_prob": args.critical_prob}}, checkpoint_path)
             print(f"  ✓ En iyi model kaydedildi (val AUROC {best_auroc:.4f}, F1-eşiği {threshold:.2f}) -> {checkpoint_path}")

@@ -44,7 +44,8 @@ def scenarios():
 
 def run_all(model, ckpt, loader, device):
     criterion = MultiTaskLoss(ckpt.get("alpha_mse", 0.4), ckpt.get("beta_focal", 0.6),
-                              ckpt["focal_gamma"], ckpt["focal_alpha"], spatial_prior=ckpt.get("spatial_prior", 0.0))
+                              ckpt["focal_gamma"], ckpt["focal_alpha"], spatial_prior=ckpt.get("spatial_prior", 0.0),
+                              wall_alpha=ckpt.get("wall_alpha"))
     results = {}
     for name, mask_fn in scenarios().items():
         r = evaluate(model, loader, criterion, device, mask_fn, seed=123, threshold=ckpt["threshold"])
