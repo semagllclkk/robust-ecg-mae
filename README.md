@@ -26,7 +26,7 @@ PTB-XL test kümesinde (strat_fold 10, 550 MI + 550 Normal, eğitimde görülmem
 
 Açık konular:
 - V1–V4'ün dördü birlikte koptuğunda rekonstrüksiyon R²'si 0.544. Teşhis F1'i bu durumda da 0.885 ile hedefin üstünde. Risk 1'in iki B planı (Einthoven kısıtı, uzamsal komşuluk regülarizasyonu) denendi; bu senaryoyu iyileştirmedi.
-- Lateral (yan) duvar ayrımı zayıf: test kümesindeki 20 Lateral MI kaydının 4'ünde yan duvar işaretleniyor, çoğu Anterior olarak gösteriliyor. Eğitimde yalnız 161 Lateral örnek var.
+- Lateral (yan) duvar ayrımı zayıf: test kümesindeki 20 Lateral MI kaydının 4'ünde yan duvar işaretleniyor, çoğu Anterior olarak gösteriliyor. Eğitimde yalnız 161 Lateral örnek var. Duvar başına Focal α denemesi (`--wall-alpha sqrt`) bunu 7/20'ye çıkardı ama özgüllüğü düşürdü; ana model korundu ([docs/SONUCLAR.md](docs/SONUCLAR.md)).
 
 Ayrıntılar ve grafikler: [docs/SONUCLAR.md](docs/SONUCLAR.md), [results/figures/](results/figures/). Canlı stres testi: [docs/STRES_TESTI.md](docs/STRES_TESTI.md). Proje sonuç raporu taslağı: [docs/SONUC_RAPORU_TASLAK.md](docs/SONUC_RAPORU_TASLAK.md).
 
