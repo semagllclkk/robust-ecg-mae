@@ -173,8 +173,9 @@ def build_clinical_pdf(result):
                f"esik {result['xai_metrics']['threshold']:.2f}). Sonuc hekim tarafindan EKG uzerinde dogrudan "
                "degerlendirilmelidir.", font="Helvetica-Bold", color=RED)
     xai = result["xai_metrics"]
-    w.para(f"Spatial Attention katmaninda en cok dikkat alan derivasyon: {xai['most_affected_lead']} "
-           f"({xai['anatomical_region']}, agirlik {_pct(xai['max_lead_attention'])}).", font="Helvetica-Oblique")
+    w.para(f"Spatial Attention'da en cok bilgi kaynagi olarak kullanilan derivasyon: {xai['most_affected_lead']} "
+           f"(agirlik {_pct(xai['max_lead_attention'])}). Bu deger hasarin yerini degil, derivasyonlar arasi bilgi "
+           "akisini gosterir.", font="Helvetica-Oblique")
     if dropped:
         w.para(f"{len(dropped)} kanal kopuk olmasina ragmen karar guveni {_pct(diag['confidence'])}. "
                "Kopuk kanallar saglam kanallardan yeniden uretilmistir.", font="Helvetica-Oblique")

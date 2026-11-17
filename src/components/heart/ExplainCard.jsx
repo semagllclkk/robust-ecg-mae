@@ -4,10 +4,10 @@ function formatSt(value) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)} mm`;
 }
 
-function Row({ label, children, tone = 'text-text' }) {
+function Row({ label, children, tone = 'text-text', hint }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className="text-muted">{label}</span>
+      <span className="text-muted" title={hint}>{label}</span>
       <span className={`num text-right ${tone}`}>{children}</span>
     </div>
   );
@@ -48,7 +48,13 @@ export default function ExplainCard({ info, prediction, disconnectedLeads, onClo
           {formatSt(prediction.stByLead[peakLead])}
         </Row>
         <Row label="Şüpheli koroner arter">{WALLS[wall].artery}</Row>
-        <Row label="Model dikkat payı">%{Math.round(attentionShare * 100)}</Row>
+        {/* Dikkat ağırlıkları hasar yerini değil bilgi akışını gösterir (gerçek duvarla uyum %2.7, docs/SONUCLAR.md) */}
+        <Row
+          hint="Spatial Attention: bu duvarın derivasyonlarının diğer kanalları yeniden üretmek için bilgi kaynağı olarak ne kadar kullanıldığı. Hasarın yerini göstermez; hasarlı duvar 'Duvar olasılığı' satırından gelir."
+          label="Bilgi kaynağı payı (dikkat)"
+        >
+          %{Math.round(attentionShare * 100)}
+        </Row>
         <Row label="Eksik kanallar">
           {missing.length
             ? missing
