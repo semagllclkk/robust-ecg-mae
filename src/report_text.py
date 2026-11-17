@@ -63,8 +63,11 @@ def build_narrative(result):
         summary = f"MI lehine bulgu saptanmadı (MI olasılığı {_pct(mi_p)}, karar eşiği {_pct(thr)})."
 
     xai = result["xai_metrics"]
-    clinician.append(f"Model kararında en çok {xai['most_affected_lead']} derivasyonuna dayandı "
-                     f"({xai['anatomical_region']}; Spatial Attention ağırlığı {_pct(xai['max_lead_attention'])}).")
+    # Dikkat ağırlıkları hasar yerini değil derivasyonlar arası bilgi akışını gösterir (gerçek duvarla uyum %2.7,
+    # docs/SONUCLAR.md); hasarlı duvar duvar sınıflandırma başlığından gelir.
+    clinician.append(f"Spatial Attention'da en çok bilgi kaynağı olarak kullanılan derivasyon: "
+                     f"{xai['most_affected_lead']} (ağırlık {_pct(xai['max_lead_attention'])}). Bu değer hasarın "
+                     "yerini değil, derivasyonlar arası bilgi akışını gösterir.")
 
     if dropped:
         parts = []
