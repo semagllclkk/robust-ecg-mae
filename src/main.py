@@ -8,7 +8,6 @@ import torch
 import numpy as np
 import pandas as pd
 import os
-import io
 import random
 import sys
 import threading
@@ -20,8 +19,6 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 
 from src.ecg_constants import (FS, LEAD_NAMES, SEQ_LEN, WALL_GROUPS, WALL_LEAD_INDICES, WALL_NAMES,
                                WALL_TO_ARTERY, WALL_TO_SUBCLASS)
@@ -526,117 +523,13 @@ def predict_signal(req: PredictRequest):
 
 @app.get("/api/generate-report")
 def generate_pdf_report(
-    patient_id: str = "PTB-XL-0842",
-    anomaly_score: float = 0.025,
-    diagnosis: str = "Anterior Myocardial Infarction",
-    confidence: float = 0.96,
-    active_leads: int = 12,
-    dropped_leads: str = "",
-    most_affected_lead: str = "V2",
-    anatomical_region: str = "On Duvar (Anterior)",
-    ecg_id: int = Query(None, description="Rapor bu kaydın gerçek model analizinden üretilir (önerilen)"),
-    dropped: str = Query("", description="Analizdeki kopuk kanallar, örn. V1,V2 (ecg_id ile birlikte)"),
+    ecg_id: int = Query(..., description="Rapor bu kaydın gerçek model analizinden üretilir"),
+    dropped: str = Query("", description="Analizdeki kopuk kanallar, örn. V1,V2"),
 ):
-    # Önerilen yol: ekrandaki analizle aynı kayıt ve aynı kopmalar yeniden analiz edilir;
+    # Ekrandaki analizle aynı kayıt ve aynı kopmalar yeniden analiz edilir;
     # PDF tamamen model çıktısından üretilir (sabit metin veya arayüzden gelen değer kullanılmaz).
-    if ecg_id is not None:
-        if "pools" not in store:
-            raise HTTPException(status_code=500, detail="Önişlenmiş veri seti yok.")
-        result = analyze_row(find_row(ecg_id), resolve_dropped(12, parse_dropped(dropped)))
-        return StreamingResponse(build_clinical_pdf(result), media_type="application/pdf",
-                                 headers={"Content-Disposition": f"inline; filename=ecg_report_{ecg_id}.pdf"})
-
-    # Eski yol (geriye dönük uyumluluk): arayüzden gelen parametrelerle şablon rapor.
-    # Senaryo / Tanıya göre klinik parametreleri ve hekim yorumlarını dinamik belirle
-    diag_lower = diagnosis.lower()
-    
-    if "inferior" in diag_lower or "alt" in diag_lower:
-        diagnosis_title = "Inferior Myocardial Infarction"
-        affected_lead = "II, III, aVF"
-        anat_region = "Alt Duvar (Inferior Miyokard)"
-        clinical_note = "Lead II, III ve aVF uzerindeki ST elevasyonu ve rekonstruksiyon sapmalari,"
-        clinical_subnote = "iskemik surecin oncelikli olarak kalbin Alt (Inferior) Duvarina odaklandigini gostermektedir."
-        patient_note = "Inceleme sonucunda, kalbinizin 'Alt Duvar' bolgesine ait elektriksel iletide hekim kontrolu gerektirebilecek olasi bir bulgu izlenmistir."
-    elif "anterior" in diag_lower or "on" in diag_lower:
-        diagnosis_title = "Anterior Myocardial Infarction"
-        affected_lead = "V2, V3 (V1-V4)"
-        anat_region = "On Duvar (Anterior Miyokard)"
-        clinical_note = "Lead V1-V4 uzerindeki rekonstruksiyon hatasi ve dikkat agirliklari,"
-        clinical_subnote = "iskemik surecin oncelikli olarak kalbin On (Anterior) Duvarina odaklandigini gostermektedir."
-        patient_note = "Inceleme sonucunda, kalbinizin 'On Duvar' bolgesine ait elektriksel dalgalarda hekim kontrolu gerektirebilecek olasi bir duzensizlik izlenmistir."
-    else:
-        diagnosis_title = "Normal Sinus Ritmi (Fizyolojik Bulgular)"
-        affected_lead = "Yok (Fizyolojik Sinirlar)"
-        anat_region = "Saglikli Miyokard Doku"
-        anomaly_score = 0.00420
-        clinical_note = "Tum derivasyonlar normal fizyolojik sinirlar icerisindedir."
-        clinical_subnote = "MAE rekonstruksiyon sapmasi tespit edilmemis olup akut iskemik patoloji izlenmemistir."
-        patient_note = "Inceleme sonucunda, EKG ritminiz normal sinirlarda degerlendirilmistir. Belirgin bir ritim bozuklugu veya iskemik bulguya rastlanmamistir."
-
-    buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    
-    # 1. Ust Kurumsal Baslik Seridi
-    p.setFillColorRGB(0.08, 0.22, 0.38)
-    p.rect(0, 720, 612, 80, fill=True, stroke=False)
-    
-    p.setFillColorRGB(1, 1, 1)
-    p.setFont("Helvetica-Bold", 17)
-    p.drawString(45, 765, "12-Lead ECG MAE Clinical Decision & XAI Report")
-    p.setFont("Helvetica", 9)
-    p.drawString(45, 745, "Yapay Zeka Destekli Kardiyak Karar Destek ve Eksik Kanal Tolerans Sistemi")
-    p.drawRightString(567, 745, f"Protokol No: {patient_id}")
-
-    # 2. Hasta & Sistem Guvenlik Karti (Gri Kutu)
-    p.setFillColorRGB(0.95, 0.96, 0.98)
-    p.roundRect(45, 630, 522, 70, 6, fill=True, stroke=False)
-    
-    p.setFillColorRGB(0.1, 0.1, 0.1)
-    p.setFont("Helvetica-Bold", 10)
-    p.drawString(60, 680, "Sistem Guvenilirlik ve Donanim Durumu:")
-    p.setFont("Helvetica", 9)
-    p.drawString(60, 662, f"- Aktif Kanal Sayisi: {active_leads} / 12 Derivasyon")
-    p.drawString(60, 646, f"- Telafisi Saglanan Kopuk Kanallar: {dropped_leads if dropped_leads else 'Kopma Yok (Tam Veri)'}")
-    
-    conf_val = confidence * 100 if confidence <= 1.0 else confidence
-    p.drawString(320, 662, f"- Model Guven Skoru: %{conf_val:.1f}")
-    p.drawString(320, 646, "- Rekonstruksiyon: MAE Derin Ogrenme Tabanli")
-
-    # 3. Klinik Teshis ve Hekim Bulgulari
-    p.setFillColorRGB(0.08, 0.22, 0.38)
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(45, 600, "1. Klinik Teshis ve XAI (Aciklanabilir Yapay Zeka) Bulgulari")
-    
-    p.setStrokeColorRGB(0.8, 0.8, 0.8)
-    p.line(45, 592, 567, 592)
-    
-    p.setFillColorRGB(0.15, 0.15, 0.15)
-    p.setFont("Helvetica", 10)
-    p.drawString(60, 572, f"- Tani Tahmini: {diagnosis_title}")
-    p.drawString(60, 552, f"- Global Hata Skoru (MSE): {anomaly_score:.5f}")
-    p.drawString(60, 532, f"- En Yuksek Sapma Gosteren Derivasyon: Lead {affected_lead}")
-    p.drawString(60, 512, f"- Eslenen Anatomik Bolge: {anat_region}")
-    
-    # 4. Hekim Icin XAI Yorumu
-    p.setFont("Helvetica-Oblique", 9)
-    p.drawString(60, 485, f"Klinik Cikarim: {clinical_note}")
-    p.drawString(60, 472, f"{clinical_subnote}")
-
-    # 5. Hasta Bilgilendirme Notu (Sade Aciklama Kutusu)
-    p.setFillColorRGB(0.93, 0.97, 0.94)
-    p.roundRect(45, 345, 522, 105, 6, fill=True, stroke=False)
-    
-    p.setFillColorRGB(0.1, 0.45, 0.2)
-    p.setFont("Helvetica-Bold", 11)
-    p.drawString(60, 430, "2. Hasta ve Hasta Yakini Bilgilendirme Notu (Ozet)")
-    
-    p.setFillColorRGB(0.15, 0.2, 0.15)
-    p.setFont("Helvetica", 9)
-    p.drawString(60, 408, "Bu rapor, EKG sinyallerinizin yapay zeka tarafindan incelenmesiyle olusturulmustur.")
-    p.drawString(60, 392, f"{patient_note}")
-    p.drawString(60, 376, "Lutfen bu on degerlendirme sonucunu kardiyoloji uzman hekiminizle paylasiniz.")
-
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": "inline; filename=ecg_report.pdf"})
+    if "pools" not in store:
+        raise HTTPException(status_code=500, detail="Önişlenmiş veri seti yok.")
+    result = analyze_row(find_row(ecg_id), resolve_dropped(12, parse_dropped(dropped)))
+    return StreamingResponse(build_clinical_pdf(result), media_type="application/pdf",
+                             headers={"Content-Disposition": f"inline; filename=ecg_report_{ecg_id}.pdf"})

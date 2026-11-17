@@ -159,6 +159,8 @@ def main():
     parser.add_argument("--wall-alpha", default="none", choices=["none", "sqrt"],
                         help="Duvar başına Focal α: 'sqrt' = MI kayıtlarında pozitif/negatif sayısının kareköküyle dengeli "
                              "(seyrek Lateral duvar), 'none' = ağırlıksız")
+    parser.add_argument("--lead-dropout", default="auto", choices=["auto", "on", "off"],
+                        help="Eğitimde LeadDropout: 'auto' = yalnız MAE'de, 'on' = 1D-ResNet'te de (ablasyon)")
     parser.add_argument("--patience", type=int, default=5, help="Doğrulama AUROC iyileşmezse erken durdurma")
     parser.add_argument("--no-amp", action="store_true", help="bfloat16 karışık hassasiyeti kapat")
     parser.add_argument("--limit-batches", type=int, default=None, help="Epoch başına batch sınırı (deneme için)")
@@ -183,7 +185,8 @@ def main():
     print(f"Dengeli alt kümeler — eğitim: {len(train_set)} kayıt (MI oranı {pos_frac:.3f})   "
           f"doğrulama: {len(val_set)} kayıt")
 
-    if args.arch == "mae":
+    use_dropout = args.lead_dropout == "on" or (args.lead_dropout == "auto" and args.arch == "mae")
+    if use_dropout:
         # LeadDropout DataLoader seviyesinde (Rapor Md. 2.2): her batch için k ∈ [min_drop, max_drop]
         collate = LeadDropoutCollate(args.min_drop, args.max_drop, args.critical_prob)
         print(f"LeadDropout: batch başına k ∈ [{args.min_drop}, {args.max_drop}], kritik kopma olasılığı {args.critical_prob}")
@@ -301,7 +304,7 @@ def main():
                         "threshold": threshold, "focal_alpha": focal_alpha, "focal_gamma": args.gamma,
                         "alpha_mse": alpha_mse, "beta_focal": args.beta_focal, "spatial_prior": args.spatial_prior,
                         "wall_alpha": wall_alpha,
-                        "lead_dropout": {"min_drop": args.min_drop, "max_drop": args.max_drop,
+                        "lead_dropout": {"enabled": use_dropout, "min_drop": args.min_drop, "max_drop": args.max_drop,
                                          "critical_prob": args.critical_prob}}, checkpoint_path)
             print(f"  ✓ En iyi model kaydedildi (val AUROC {best_auroc:.4f}, F1-eşiği {threshold:.2f}) -> {checkpoint_path}")
         else:
