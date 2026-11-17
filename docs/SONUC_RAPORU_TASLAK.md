@@ -11,7 +11,7 @@
 
 Bu projede, 12 derivasyonlu elektrokardiyogramda (EKG) 1–4 derivasyonun koptuğu veya parazitlendiği koşullarda miyokard enfarktüsünü (MI) tespit eden ve kopan derivasyonları yeniden üreten çift başlıklı bir Maskeli Öz-Kodlayıcı (MAE) geliştirilmiştir. Model PTB-XL veri kümesinde [11], DataLoader seviyesinde uygulanan kanal bazlı LeadDropout ile eğitilmiştir. Ortak omurga 1D-CNN blokları, STFT tabanlı spektral kol, Lead Fusing ve Spatio-Temporal Transformer katmanlarından oluşur. Başlık A simetrik 1D Transpose Conv kod çözücüyle kopan derivasyonları yeniden üretir, Başlık B ise Global Average Pooling ve Dense katmanlarıyla MI varlığını ve etkilenen duvarı (Anterior, Inferior, Lateral) sınıflandırır. Kayıp fonksiyonu 0.4·MSE (yalnızca kopan derivasyonlarda) + 0.6·Focal Loss'tur.
 
-Eğitimde görülmemiş test kümesinde (550 MI + 550 Normal) model, 1–4 derivasyon kopmasının tüm senaryolarında F1 > 0.88 hedefini sağlamıştır (0.885–0.923). Kopan derivasyonların rekonstrüksiyonunda rastgele kopmalarda RMSE 0.067–0.079 mV ve R² 0.829–0.871 elde edilmiş, Einthoven kısıtıyla R² 0.885–0.900'e yükselmiştir. Klasik 1D-ResNet [1] mimarisine göre yanlış negatif oranı %49.2 azalmıştır (hipotez: ≥ %25). Gerçek gürültü kayıtlarıyla (MIT-BIH NSTDB) yapılan 36 senaryonun tamamında F1 > 0.88 korunmuştur. Spatial Attention ağırlıkları ve sınıflandırma çıktısı, FastAPI üzerinden 3D kalp modeline aktarılmış; tıklandığında ST sapmasını, şüpheli koroner arteri ve karar güvenini gösteren Click-to-Explain arayüzü geliştirilmiştir. Çıkarım süresi 13–22 ms'dir (hedef < 50 ms).
+Eğitimde görülmemiş test kümesinde (550 MI + 550 Normal) model, 1–4 derivasyon kopmasının tüm senaryolarında F1 > 0.88 hedefini sağlamıştır (0.885–0.923). Kopan derivasyonların rekonstrüksiyonunda rastgele kopmalarda RMSE 0.067–0.079 mV ve R² 0.829–0.871 elde edilmiş, Einthoven kısıtıyla R² 0.885–0.900'e yükselmiştir. Klasik 1D-ResNet [1] mimarisine göre yanlış negatif oranı %49.2 azalmıştır (hipotez: ≥ %25; %95 güven aralığı %40.5–%57.8, McNemar p = 3·10⁻⁵⁴). Ablasyon deneyinde aynı kanal koparma ile eğitilen 1D-ResNet benzer duyarlılığa ulaşmış, MAE mimarisi ise aynı duyarlılıkta anlamlı derecede daha az yanlış alarm vermiştir (p = 8·10⁻²⁷). Gerçek gürültü kayıtlarıyla (MIT-BIH NSTDB) yapılan 36 senaryonun tamamında F1 > 0.88 korunmuştur. Duvar sınıflandırma çıktısı (gerçek duvarla %92.4 uyum) ve Spatial Attention ağırlıkları FastAPI üzerinden 3D kalp modeline aktarılmış; tıklandığında ST sapmasını, şüpheli koroner arteri ve karar güvenini gösteren Click-to-Explain arayüzü geliştirilmiştir. Çıkarım süresi 13–22 ms'dir (hedef < 50 ms).
 
 **Anahtar kelimeler:** Elektrokardiyografi, miyokard enfarktüsü, maskeli öz-kodlayıcı, derivasyon kopması, açıklanabilir yapay zekâ
 
@@ -24,7 +24,7 @@ Projenin amacı, saha ve acil koşullarında sık görülen elektrot kopması ve
 | Kopmaya dayanıklı teşhis | 1–4 derivasyon koptuğunda F1 > 0.88 | 0.885–0.923 (7 kopma senaryosu) | ✓ |
 | Rekonstrüksiyon hatası | RMSE < 0.15 | Rastgele kopma 0.067–0.079 mV; kritik Anterior 0.166 mV | Kritik Anterior dışında ✓ |
 | Rekonstrüksiyon uyumu | R² > 0.80, yüksek Pearson r | Rastgele kopma R² 0.829–0.871, r 0.93–0.95; kritik Anterior R² 0.544 | Kritik Anterior dışında ✓ |
-| Hipotez | 1D-ResNet'e göre yanlış negatifte ≥ %25 azalma | %49.2 | ✓ |
+| Hipotez | 1D-ResNet'e göre yanlış negatifte ≥ %25 azalma | %49.2 (%95 GA %40.5–%57.8; p = 3·10⁻⁵⁴) | ✓ |
 | Gecikme (Risk 2) | Çıkarım < 50 ms | 13–22 ms | ✓ |
 
 ## 3. Yöntem
@@ -63,12 +63,16 @@ Eğitim, Araştırma Olanakları tablosunda yer alan Apple M3 geliştirme bilgis
 - **Metrikler:** F1, AUROC, duyarlılık, özgüllük, yanlış negatif oranı (FNR); kopan derivasyonlarda RMSE (mV), R², Pearson r; kriz tipi AUROC.
 - **Gerçekçi rekonstrüksiyon ölçümü:** Kopan derivasyonun gerçek genliği kullanılmadan, popülasyon σ değeriyle mV'a çevrilerek ölçülmüştür (sistemin sahada çalıştığı koşul).
 - **Karşılaştırma:** Aynı veriyle, LeadDropout olmadan eğitilen 1D-ResNet [1]. Hipotez havuzlanmış FNR ile (toplam FN / toplam MI, tüm kopma senaryoları) sınanmıştır.
+- **Ablasyon:** Kazancın kaynağını ayırmak için 1D-ResNet, MAE ile aynı LeadDropout (k ∈ [1, 4], kritik kopma %30) uygulanarak ayrıca eğitilmiştir. Üç model (MAE, 1D-ResNet, LeadDropout'lu 1D-ResNet) aynı kopma maskeleriyle değerlendirilmiş; tüm modeller doğrulama AUROC'una göre seçilmiştir.
+- **İstatistik:** Kayıt düzeyinde 2.000 örneklemli eşleştirilmiş bootstrap ile %95 güven aralıkları; modeller arası farklar için MI kayıtlarında (kaçırılan MI) ve Normal kayıtlarda (yanlış alarm) ayrı ayrı kesin McNemar testi.
+- **Gerçek oranlı test:** Dengeli kümenin yanında strat_fold 10'daki tüm kayıtlar (2.198 kayıt: 550 MI, 912 Normal ve MI dışı ST/T değişikliği, hipertrofi, ileti bozukluğu) karar eşikleri değiştirilmeden değerlendirilmiştir.
+- **Açıklanabilirlik ölçümü:** Tek duvarlı 445 MI test kaydında Spatial Attention'ın duvar gruplarına düşen ortalama ağırlığının en yüksek olduğu duvar ve duvar sınıflandırma başlığının çıktısı gerçek MI duvarıyla karşılaştırılmıştır.
 - **Gürültü testi:** MIT-BIH Noise Stress Test Database'in [13, 14] taban kayması, kas artefaktı ve elektrot hareketi kayıtları, ham sinyalde rastgele 1–4 derivasyona 12/6/0 dB SNR ile eklenmiş, ardından ön işleme hattı uygulanmıştır (36 senaryo). Parazitli derivasyonlar sisteme bildirilmemiştir.
 
 ### 3.6 Arayüz ve açıklanabilirlik (İP2, İP4, İP5)
 
 - **İP2 (Sema Gül Çelik):** React tabanlı gösterge paneli; 12 derivasyonun tek tek açılıp kapatılabildiği EKG kâğıdı görünümü ve Mock-API. Arayüzün kendi kare sayacıyla (EKG çizim döngüsü) dört koşulda 10'ar saniye ölçüm yapılmıştır: 12 derivasyon akış, 4 derivasyon kopması (V1–V4) ve rekonstrüksiyon çizimi, 3D kalp modelinin döndürülmesi, art arda yeni kayıt yüklenmesi. Ölçüm hem başarı ölçütündeki gibi yalnız Mock-API (sahte veri, modelden bağımsız) ile hem de gerçek FastAPI arka ucu ve modelle tekrarlanmıştır. Her iki durumda da tüm koşullarda en düşük değer 60 FPS'tir (Apple M3, Chrome 157, 60 Hz ekran).
-- **İP4 (Sema Gül Çelik):** Guo ve ark. [10] derivasyon gruplamasına uygun olarak 3D kalp modeli (HuBMAP Human Reference Atlas [15]) üzerinde etkilenen duvarın kırmızı gradyanla işaretlenmesi; duvara tıklandığında açılan Click-to-Explain kartı: ST sapması (mm), şüpheli koroner arter (Anterior → LAD, Inferior → RCA, Lateral → LCx), eksik derivasyonlara rağmen karar güveni.
+- **İP4 (Sema Gül Çelik):** Guo ve ark. [10] derivasyon gruplamasına uygun olarak 3D kalp modeli (HuBMAP Human Reference Atlas [15]) üzerinde etkilenen duvarın (duvar sınıflandırma başlığının çıktısı) kırmızı gradyanla işaretlenmesi; duvara tıklandığında açılan Click-to-Explain kartı: ST sapması (mm), şüpheli koroner arter (Anterior → LAD, Inferior → RCA, Lateral → LCx), eksik derivasyonlara rağmen karar güveni. Spatial Attention ağırlıkları kartta "bilgi kaynağı payı" olarak, kopan derivasyonun hangi sağlam derivasyonlardan üretildiğini gösterecek şekilde sunulur (bkz. 4.8).
 - **İP5 (ortak):** FastAPI arka ucu, eğitilmiş modeli Mock-API ile aynı sözleşmeyle sunar. Çıktılar: MI olasılığı, etkilenen duvarlar (doğrulama kümesinde kalibre edilmiş duvar eşikleri), Spatial Attention ağırlıkları, derivasyon önem skorları, kopan derivasyonların rekonstrüksiyonu ve kaynakları, dinamik klinisyen/hasta metinleri ve PDF klinik rapor.
 
 ## 4. Bulgular
@@ -101,7 +105,7 @@ Eğitim, Araştırma Olanakları tablosunda yer alan Apple M3 geliştirme bilgis
 | Kritik Lateral | 0.200 | 0.095 | %52.7 |
 | **Havuzlanmış** | **0.184** | **0.094** | **%49.2** |
 
-Hipotez doğrulanmıştır. Kritik Anterior senaryosundaki istisna açıkça belirtilmelidir: V1–V4 sıfırlandığında 1D-ResNet kayıtların çoğunu MI olarak sınıflandırmakta, özgüllüğü 0.976'dan 0.609'a düşmektedir. Bu senaryoda ResNet'in F1'i 0.813, MAE'nin 0.885'tir.
+Hipotez doğrulanmıştır: azalmanın %95 güven aralığı %40.5–%57.8'dir ve alt sınırı da %25'in üzerindedir; kaçırılan MI sayısındaki fark kesin McNemar testiyle p = 3·10⁻⁵⁴ düzeyinde anlamlıdır. Kritik Anterior senaryosundaki istisna açıkça belirtilmelidir: V1–V4 sıfırlandığında 1D-ResNet kayıtların çoğunu MI olarak sınıflandırmakta, özgüllüğü 0.976'dan 0.609'a düşmektedir. Bu senaryoda ResNet'in F1'i 0.813, MAE'nin 0.885'tir.
 
 ### 4.3 Rekonstrüksiyon ve Einthoven kısıtı
 
@@ -122,7 +126,44 @@ Kopan ekstremite derivasyonları Einthoven ve Goldberger bağıntılarıyla sağ
 
 Apple M3 (MPS) üzerinde tek kayıt için 13–22 ms ölçülmüştür (hedef < 50 ms). Yalnız CPU'lu bir dizüstü bilgisayarda PyTorch ve ONNX Runtime ile ~80 ms ölçülmüştür. Arka uç aynı kayıt ve kopma için sonucu önbellekten verdiğinden arayüzde tekrarlanan isteklerde gecikme hissedilmemektedir.
 
-### 4.6 Şekiller
+### 4.6 Ablasyon ve istatistiksel anlamlılık
+
+| Dengeli test | MAE | 1D-ResNet | 1D-ResNet + LeadDropout |
+|---|---|---|---|
+| F1, rastgele 4 kopma [%95 GA] | **0.919** [0.901, 0.935] | 0.854 [0.830, 0.876] | 0.887 [0.867, 0.905] |
+| F1, kritik Inferior [%95 GA] | **0.902** [0.882, 0.919] | 0.822 [0.795, 0.847] | 0.861 [0.840, 0.883] |
+| AUROC, rastgele 4 kopma | **0.976** | 0.934 | 0.959 |
+| Özgüllük, rastgele 4 kopma | **0.925** | 0.893 | 0.853 |
+| Havuzlanmış FNR [%95 GA] | 0.094 [0.073, 0.114] | 0.184 [0.158, 0.211] | 0.092 [0.072, 0.112] |
+
+| McNemar (tüm kopma senaryoları) | Kaçırılan MI | Yanlış alarm |
+|---|---|---|
+| MAE – 1D-ResNet | p = 3·10⁻⁵⁴ (MAE lehine) | p = 2·10⁻⁷ (MAE lehine) |
+| MAE – 1D-ResNet + LeadDropout | p = 0.70 (fark yok) | p = 8·10⁻²⁷ (MAE lehine) |
+
+Kaçırılan MI'daki azalmanın büyük kısmı eğitimde kanal koparmaktan (LeadDropout) gelmektedir: aynı maskelemeyle eğitilen 1D-ResNet de benzer duyarlılığa ulaşır. Çift başlıklı MAE mimarisinin (Spatial Attention, IRC, STFT kolu, rekonstrüksiyon başlığı) katkısı yanlış alarmdadır: aynı duyarlılıkta sağlıklı kayıtlarda anlamlı derecede daha az yanlış alarm verir ve AUROC'u tüm senaryolarda daha yüksektir. Ayrıca kopan derivasyonu yeniden üreten ve hangi sağlam derivasyonlardan üretildiğini gösteren tek model MAE'dir.
+
+### 4.7 Gerçek oranlı test kümesi
+
+| 12 derivasyon, 2.198 kayıt | AUROC | F1 | Duyarlılık | Yanlış alarm: Normal / ST-T / Hipertrofi / İleti |
+|---|---|---|---|---|
+| MAE | **0.858** | **0.645** | 0.918 | 0.07 / 0.68 / 0.64 / 0.63 |
+| 1D-ResNet | 0.830 | 0.613 | 0.782 | 0.03 / 0.62 / 0.57 / 0.55 |
+| 1D-ResNet + LeadDropout | 0.847 | 0.626 | 0.918 | 0.11 / 0.70 / 0.63 / 0.62 |
+
+Modeller, araştırma önerisinde tanımlandığı gibi MI ile Normal arasında eğitilmiştir. Eğitimde görmedikleri MI dışı patolojilerin %55–70'ini MI olarak işaretlemektedirler; MI'ın daha seyrek olduğu bu kümede F1 bu nedenle düşmektedir. Bu koşulda da en yüksek AUROC ve F1 MAE'dedir.
+
+### 4.8 Açıklanabilirlik ölçümü
+
+| Tek duvarlı 445 MI kaydı | Gerçek duvarla uyum | Anterior (203) | Inferior (230) | Lateral (12) |
+|---|---|---|---|---|
+| Duvar sınıflandırma başlığı | **%92.4** | %95 | %94 | %8 |
+| Spatial Attention (en yüksek duvar grubu) | %2.7 | %0 | %0 | %100 |
+| Çoğunluk sınıfı (şans düzeyi) | %51.7 | | | |
+
+3D kalp modelinde işaretlenen duvar, gerçek duvarla %92.4 uyuşan duvar sınıflandırma başlığından gelmektedir. Spatial Attention ağırlıkları ise her kayıtta en çok Lateral derivasyonlara (I, aVL, V5, V6) yönelmektedir; bu ağırlıklar hasarın yerini değil, kopan derivasyonu yeniden üretmek için hangi sağlam derivasyonların bilgi kaynağı olarak kullanıldığını göstermektedir. Arayüzdeki Click-to-Explain kartı ve klinik metinler bu ayrıma göre düzenlenmiştir.
+
+### 4.9 Şekiller
 
 `results/figures/` altında 300 dpi: eğitim eğrileri, kopma senaryolarında F1, yanlış negatif karşılaştırması, rekonstrüksiyon R², gürültü testi F1.
 
@@ -146,14 +187,16 @@ Apple M3 (MPS) üzerinde tek kayıt için 13–22 ms ölçülmüştür (hedef < 
 ## 7. Tartışma ve Sınırlılıklar
 
 1. **Kritik Anterior rekonstrüksiyonu:** V1–V4'ün dördü birlikte koptuğunda sağ prekordiyal bölgenin bilgisi kalan V5, V6 ve ekstremite derivasyonlarında fiziksel olarak tam bulunmamaktadır. Teşhis başarımı ise bu senaryoda da hedefin üzerindedir (F1 0.885).
-2. **Sınıf oranı:** Test kümesi dengelidir. MI'ın daha seyrek olduğu gerçek popülasyonda F1 daha düşük çıkar; AUROC, duyarlılık ve özgüllük bu orandan etkilenmez.
+2. **Sınıf oranı ve MI dışı patolojiler:** Ana test kümesi dengelidir. Gerçek oranlı kümede (2.198 kayıt) AUROC 0.858, F1 0.645'tir; MI dışı ST/T değişikliği, hipertrofi ve ileti bozukluğu kayıtlarının %63–68'inde yanlış alarm verilmektedir. Sahada bu patolojilerin "MI değil" olarak ayrılması için eğitime negatif örnek olarak katılmaları gerekir (gelecek çalışma).
 3. **Lateral MI:** Eğitim kümesindeki MI kayıtlarında yalnız 161 Lateral örnek bulunmaktadır (Anterior 2.466, Inferior 2.618) ve bunların yaklaşık yarısı Anterior etiketini de taşımaktadır. Test kümesindeki 20 Lateral MI kaydının 4'ünde yan duvar işaretlenmekte, çoğu Anterior olarak gösterilmektedir. İP6 optimizasyonu kapsamında Focal Loss sınıf ağırlığı (α) duvar başına uygulanmış; Lateral tespiti 7/20'ye yükselmiş, ancak özgüllük 0.935'ten 0.891'e düşmüş ve en düşük F1 hedef sınırına (0.880) inmiştir. Doğrulama MI AUROC'u eşit düzeyde olduğundan ana model korunmuştur. Test kümesinde 20 kayıt bulunduğundan bu duvarın sonuçları istatistiksel olarak zayıftır.
-4. **Gürültülü derivasyon tespiti:** MAE tutarlılığıyla parazitli derivasyon tespiti denenmiş, katkı sağlamamıştır. Model parazitli derivasyonları ayrı bir tespit adımı olmadan tolere etmektedir.
-5. **Klinik doğrulama:** Sonuçlar tek bir açık veri kümesine dayanmaktadır; klinik kullanım öncesinde dış veri kümelerinde ve prospektif olarak doğrulanması gerekir.
+4. **Dikkat ağırlıkları ve hasar yeri:** Spatial Attention ağırlıkları MI'ın yerini göstermemektedir (gerçek duvarla uyum %2.7); anatomik haritalama duvar sınıflandırma başlığıyla yapılmaktadır (%92.4). Dikkat ağırlıkları arayüzde bilgi kaynağı göstergesi olarak sunulmaktadır.
+5. **Tek eğitim tohumu:** Her model bir kez eğitilmiştir; güven aralıkları test örneklemesindeki belirsizliği yansıtır, eğitimdeki rastlantısallığı kapsamaz.
+6. **Gürültülü derivasyon tespiti:** MAE tutarlılığıyla parazitli derivasyon tespiti denenmiş, katkı sağlamamıştır. Model parazitli derivasyonları ayrı bir tespit adımı olmadan tolere etmektedir.
+7. **Klinik doğrulama:** Sonuçlar tek bir açık veri kümesine dayanmaktadır; klinik kullanım öncesinde dış veri kümelerinde ve prospektif olarak doğrulanması gerekir.
 
 ## 8. Sonuç
 
-Proje kapsamında, eksik ve gürültülü derivasyon koşullarında MI tespitini koruyan ve kararını 3D anatomik model üzerinde açıklayan uçtan uca bir sistem geliştirilmiştir. Başvuruda tanımlanan teşhis, yanlış negatif ve gecikme hedeflerinin tamamı, rekonstrüksiyon hedefleri ise kritik Anterior kopması dışında sağlanmıştır.
+Proje kapsamında, eksik ve gürültülü derivasyon koşullarında MI tespitini koruyan ve kararını 3D anatomik model üzerinde açıklayan uçtan uca bir sistem geliştirilmiştir. Başvuruda tanımlanan teşhis, yanlış negatif ve gecikme hedeflerinin tamamı, rekonstrüksiyon hedefleri ise kritik Anterior kopması dışında sağlanmıştır. Ablasyon deneyi, kaçırılan MI'daki azalmanın büyük ölçüde eğitimde kanal koparmaktan, yanlış alarmdaki azalmanın ve rekonstrüksiyon ile açıklanabilirliğin ise çift başlıklı MAE mimarisinden geldiğini göstermiştir.
 
 ## 9. Bütçe Kullanımı
 
