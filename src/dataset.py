@@ -18,12 +18,14 @@ class PTBXLProcessedDataset(Dataset):
       hedef["walls"] : (3,) Anterior/Inferior/Lateral MI (AMI/IMI/LMI) çoklu etiket — kriz tipi
       hedef["mu"], hedef["sigma"] : (12,) z-score istatistikleri (mV cinsinden RMSE için)
     balanced=True: Rapor Md. 2.1'deki dengeli MI / Normal alt kümesi (her bölümde MI sayısı kadar Normal).
-    balanced=False: tüm MI ve Normal kayıtlar (label >= 0). X.npy bellek eşlemeli (mmap) açılır;
+    balanced=False: tüm MI ve Normal kayıtlar (label >= 0). include_other=True: diğer tanılar da (MI değil). X.npy bellek eşlemeli (mmap) açılır;
     ~1 GB'lık dosya RAM'e tümüyle yüklenmez.
     """
-    def __init__(self, split="train", processed_dir="data/processed", transform=None, balanced=True):
+    def __init__(self, split="train", processed_dir="data/processed", transform=None, balanced=True,
+                 include_other=False):
         meta = pd.read_csv(os.path.join(processed_dir, "meta.csv"), index_col="ecg_id")
-        mask = (meta["split"] == split) & (meta["label"] >= 0)
+        # include_other=True: MI olmayan diğer kayıtlar (ST/T değişikliği, hipertrofi, ileti bozukluğu) MI değil (0)
+        mask = (meta["split"] == split) & ((meta["label"] >= 0) | include_other)
         if balanced:
             mask &= meta["balanced"] == 1
         mask = mask.to_numpy()
@@ -33,7 +35,7 @@ class PTBXLProcessedDataset(Dataset):
         self.mu = np.load(os.path.join(processed_dir, "mu.npy"))[self.indices]
         self.sigma = np.load(os.path.join(processed_dir, "sigma.npy"))[self.indices]
         self.meta = meta.iloc[self.indices]
-        self.labels = self.meta["label"].to_numpy(dtype=np.float32)
+        self.labels = (self.meta["label"] == 1).to_numpy(dtype=np.float32)
         self.walls = self.meta[[WALL_TO_SUBCLASS[w] for w in WALL_NAMES]].to_numpy(dtype=np.float32)
         self.ecg_ids = self.meta.index.to_numpy()
         self.transform = transform

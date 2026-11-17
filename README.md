@@ -19,10 +19,15 @@ PTB-XL test kümesinde (strat_fold 10, 550 MI + 550 Normal, eğitimde görülmem
 | 1–4 derivasyon koptuğunda F1 > 0.88 | Tüm senaryolarda 0.885–0.923 |
 | Kopan derivasyonların rekonstrüksiyonu R² > 0.80 | Rastgele 1–4 kopmada 0.83–0.87 (Einthoven kısıtıyla 0.89–0.90) |
 | RMSE < 0.15 | Rastgele kopmada 0.067–0.079 mV |
-| Klasik 1D-ResNet'e göre yanlış negatif ≥ %25 azalma | %49.2 |
+| Klasik 1D-ResNet'e göre yanlış negatif ≥ %25 azalma | %49.2 (%95 GA %40.5–57.8; McNemar p = 3·10⁻⁵⁴) |
 | Gürültülü derivasyonlarda (gerçek NSTDB gürültüsü, 36 senaryo) F1 > 0.88 | 36/36 senaryo |
 | Çıkarım < 50 ms | 13–22 ms (Apple M3) |
 | Arayüz akıcı 60 FPS | Tüm ölçüm koşullarında en düşük 60 FPS (Mock-API ve gerçek backend) |
+
+Ablasyon ve ek ölçümler ([docs/SONUCLAR.md](docs/SONUCLAR.md), `python -m src.stats_eval`):
+- **Kazancın kaynağı:** Aynı LeadDropout ile eğitilen 1D-ResNet de MI'ı benzer oranda yakalıyor (fark yok, p = 0.70); kaçırılan MI'daki azalma büyük ölçüde eğitimde kanal koparmaktan geliyor. MAE'nin mimarisi ise aynı duyarlılıkta sağlıklı kayıtlarda anlamlı derecede daha az yanlış alarm veriyor (p = 8·10⁻²⁷) ve AUROC'u her senaryoda daha yüksek; ayrıca yalnız MAE kopan kanalı yeniden üretiyor.
+- **Gerçek oranlı test:** Modeller MI ile saf Normal arasında eğitildi. Test fold'undaki tüm kayıtlarda (2.198) MI dışı patolojilerin (ST/T değişikliği, hipertrofi, ileti bozukluğu) %55–70'i MI olarak işaretleniyor; AUROC 0.858.
+- **Dikkat ağırlıkları hasar yerini göstermiyor** (gerçek duvarla uyum %2.7). 3D kalpteki duvar, gerçek duvarla %92.4 uyuşan duvar sınıflandırma başlığından geliyor; dikkat ağırlıkları kopan kanalın bilgi kaynağını gösteriyor.
 
 Açık konular:
 - V1–V4'ün dördü birlikte koptuğunda rekonstrüksiyon R²'si 0.544. Teşhis F1'i bu durumda da 0.885 ile hedefin üstünde. Risk 1'in iki B planı (Einthoven kısıtı, uzamsal komşuluk regülarizasyonu) denendi; bu senaryoyu iyileştirmedi. Eğitimde kritik kopma sıklığını artırmak RMSE'yi 0.166'dan 0.156 mV'a indirdi ama hedefe (0.15) ulaşmadı; ana model korundu.

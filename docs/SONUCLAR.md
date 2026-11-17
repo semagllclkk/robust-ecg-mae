@@ -175,6 +175,63 @@ Raporun Risk 1 B planı, 3–4 kanal kopmasında Spatial Attention katmanına "�
 
 **Karar:** Ana model korundu. Denemenin amacı olan RMSE < 0.15 sağlanmadı (0.156). Doğrulama ölçütlerindeki fark (AUROC +0.0006) gürültü düzeyindedir ve model değişikliğini gerektirmez. Test bulgusu olarak kayda geçer: yeni modelin karar eşiği (doğrulamada 0.49) daha yüksektir; özgüllük artarken yanlış negatifler artmış, kritik Anterior F1'i hedefin altına (0.875) inmiştir. Kritik Anterior rekonstrüksiyonu, iki B planı ve bu denemeyle birlikte, kalan derivasyonlardaki bilgi sınırına bağlı bir sınırlılık olarak raporlanır.
 
+## Ablasyon, istatistiksel anlamlılık, gerçek oranlı test ve dikkat uyumu (17.11.2026)
+
+`python -m src.stats_eval` → `results/ablasyon/istatistik.json`, `results/ablasyon/istatistik.log`. Üç model aynı kopma maskeleriyle değerlendirildi: çift başlıklı MAE (ana model), 1D-ResNet (LeadDropout'suz; hipotezdeki "klasik mimari") ve 1D-ResNet + LeadDropout (`python -m src.train --arch resnet1d --lead-dropout on`; ablasyon). Güven aralıkları: kayıt düzeyinde 2000 bootstrap. McNemar: kesin binom testi.
+
+### 1. Ablasyon: kazanç mimariden mi, kanal koparmaktan mı?
+
+| Test (dengeli, 550 MI + 550 Normal) | MAE | 1D-ResNet | 1D-ResNet + LeadDropout |
+|---|---|---|---|
+| Doğrulama AUROC (seçilen epoch) | 0.9778 (15) | 0.9640 (5) | 0.9763 (11) |
+| F1, rastgele 4 kanal [%95 GA] | **0.919** [0.901, 0.935] | 0.854 [0.830, 0.876] | 0.887 [0.867, 0.905] |
+| F1, kritik Inferior | **0.902** [0.882, 0.919] | 0.822 [0.795, 0.847] | 0.861 [0.840, 0.883] |
+| AUROC, rastgele 4 kanal | **0.976** [0.968, 0.982] | 0.934 [0.918, 0.947] | 0.959 [0.948, 0.968] |
+| Özgüllük, rastgele 4 kanal | **0.925** | 0.893 | 0.853 |
+| Havuzlanmış FNR (1–4 kopma) | 0.094 [0.073, 0.114] | 0.184 [0.158, 0.211] | 0.092 [0.072, 0.112] |
+| 1D-ResNet'e göre yanlış negatif azalması | %49.2 [%40.5, %57.8] | – | %50.2 [%42.2, %58.0] |
+
+McNemar, tüm kopma senaryoları havuzlanmış:
+
+| Karşılaştırma | MI kayıtları (kaçırılan MI) | Normal kayıtlar (yanlış alarm) |
+|---|---|---|
+| MAE – 1D-ResNet | MAE 447 / ResNet 98 doğru; **p = 3·10⁻⁵⁴** | MAE 288 / ResNet 176; **p = 2·10⁻⁷** |
+| MAE – 1D-ResNet + LeadDropout | 115 / 122; p = 0.70 (fark yok) | MAE 300 / 92; **p = 8·10⁻²⁷** |
+
+**Yorum:**
+- Hipotez (klasik mimariye göre yanlış negatifte ≥ %25 azalma) istatistiksel olarak güçlüdür: %49.2, %95 GA [%40.5, %57.8], p = 3·10⁻⁵⁴.
+- Kaçırılan MI'daki azalmanın büyük kısmı eğitimde kanal koparmaktan (LeadDropout) gelir: aynı maskelemeyle eğitilen 1D-ResNet de benzer duyarlılığa ulaşır (p = 0.70).
+- Mimarinin (çift başlık, Spatial Attention, IRC, STFT) katkısı yanlış alarmdadır: aynı duyarlılıkta MAE sağlıklı kayıtlarda anlamlı derecede daha az yanlış alarm verir (p = 8·10⁻²⁷), AUROC'u tüm senaryolarda daha yüksektir. Ayrıca yalnız MAE kopan kanalı yeniden üretir ve açıklama (dikkat ağırlıkları) sağlar.
+
+### 2. Gerçek oranlı test kümesi
+
+strat_fold 10'daki tüm kayıtlar: 2.198 kayıt, 550 MI, 912 Normal ve MI olmayan diğer tanılar (ST/T değişikliği 382, hipertrofi 183, ileti bozukluğu 321; bir kayıt birden fazla sınıfta olabilir). Modeller yalnız MI ile saf Normal arasında eğitildi (rapor Md. 2.1); karar eşikleri değişmedi.
+
+| 12 kanal | AUROC | F1 | Kesinlik | Duyarlılık | Yanlış alarm: Normal / ST-T / Hipertrofi / İleti |
+|---|---|---|---|---|---|
+| MAE | 0.858 | 0.645 | 0.497 | 0.918 | 0.07 / 0.68 / 0.64 / 0.63 |
+| 1D-ResNet | 0.830 | 0.613 | 0.504 | 0.782 | 0.03 / 0.62 / 0.57 / 0.55 |
+| 1D-ResNet + LeadDropout | 0.847 | 0.626 | 0.475 | 0.918 | 0.11 / 0.70 / 0.63 / 0.62 |
+
+**Yorum:** Üç model de eğitimde görmediği MI dışı patolojilerin (ST/T değişikliği, hipertrofi, ileti bozukluğu) %55–70'ini MI olarak işaretler. Bu, eğitim görevinin MI ile saf Normal arasında tanımlanmasının sonucudur; MI'a benzeyen başka hastalıklarda sistem yanlış alarm verir. Sahada MI dışı anormalliklerin "MI değil" olarak ayrılması için bu sınıfların eğitime negatif örnek olarak katılması gerekir (gelecek çalışma). Bu koşulda da MAE en yüksek AUROC'a sahiptir.
+
+### 3. Dikkat–duvar uyumu (açıklanabilirlik)
+
+Tek duvarlı 445 MI test kaydında (12 kanal), Spatial Attention'ın derivasyon başına aldığı ortalama dikkat duvar gruplarına göre ortalandı ve en yüksek grup gerçek MI duvarıyla karşılaştırıldı.
+
+| | Uyum | Anterior (203) | Inferior (230) | Lateral (12) |
+|---|---|---|---|---|
+| Dikkat ağırlıkları | **0.027** | 0.00 | 0.00 | 1.00 |
+| Duvar sınıflandırma başlığı | **0.924** | 0.95 | 0.94 | 0.08 |
+| Çoğunluk sınıfı (şans düzeyi) | 0.517 | | | |
+
+**Yorum:** Dikkat ağırlıkları MI'ın yerini göstermez: her kayıtta en çok Lateral derivasyonlara (I, aVL, V5, V6) yönelir. Bu ağırlıklar kopan kanalı yeniden üretmek için hangi sağlam kanalların bilgi kaynağı olarak kullanıldığını gösterir; hasar yeri bilgisi değildir. 3D kalpteki hasarlı duvar dikkat ağırlıklarından değil, duvar sınıflandırma başlığından gelir ve gerçek duvarla %92.4 uyuşur (Lateral hariç; Lateral sınırlılığı yukarıda). Click-to-Explain kartındaki "model dikkat payı" bu nedenle hasar kanıtı olarak değil, bilgi kaynağı göstergesi olarak okunmalıdır.
+
+### 4. Notlar
+
+- **Ana model dosya adı:** `results/egitim_mae.log` eğitim sırasında modeli `models/mae_ecg_checkpoint_amp.pth` adıyla kaydetti; eğitim bittikten sonra ana model olarak `models/mae_ecg_checkpoint.pth` adına taşındı. Yeniden üretirken: `python -m src.train --amplitude-aware` (varsayılan çıktı adı zaten `mae_ecg_checkpoint.pth`).
+- **1D-ResNet epoch sayısı:** Erken durdurmayla (5 epoch iyileşme yok) 10. epoch'ta durdu; kaydedilen model en iyi doğrulama AUROC'unun alındığı 5. epoch'tur. LeadDropout'lu 1D-ResNet 15 epoch sürdü, en iyi 11. epoch. MAE 15 epoch, en iyi 15. epoch. Tüm modeller aynı kuralla (doğrulama AUROC'u) seçildi.
+
 ## Gürültülü derivasyon stres testi
 
 Raporun amacı (Md. 1.2), 1–4 derivasyonun "tamamen koptuğu **veya parazitlendiği**" koşullarda tanı başarımını korumaktır. Kopma testlerine ek olarak gürültü testi yapıldı (`python -m src.noise_test`).
